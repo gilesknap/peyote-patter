@@ -1,0 +1,13 @@
+[project]
+name = "peyote-pattern"
+version = "0.2.0"
+description = "Peyote bead pattern generator with text, decorative patterns, and GUI"
+requires-python = ">=3.12"
+dependencies = [
+    "cairosvg>=2.9.0",
+    "nicegui>=3.10.0",
+    "pillow>=12.2.0",
+]
+
+[project.scripts]
+peyote = "peyote.cli:main"

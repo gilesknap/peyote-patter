@@ -1,0 +1,90 @@
+"""Unified font API — dispatches to bitmap or TTF engine."""
+
+from .sizing import BeadConfig
+from . import font_bitmap
+from . import font_ttf
+
+
+def text_to_fabric(
+    text: str,
+    config: BeadConfig,
+    font_mode: str = 'auto',
+    font_path: str | None = None,
+    rotate: bool = True,
+    char_height: int | None = None,
+) -> list[list[int]]:
+    """Convert text to a centered peyote fabric grid.
+
+    Args:
+        text: Text to render.
+        config: Bead configuration (columns, rows).
+        font_mode: 'auto', 'ttf', or 'bitmap'.
+        font_path: TTF font path (for ttf mode).
+        rotate: True for sideways-reading (rings), False for straight (bracelets).
+        char_height: Override character height in rows.
+
+    Returns:
+        Fabric grid: config.rows x config.columns of 0/1 values.
+    """
+    use_ttf = _should_use_ttf(font_mode, config)
+
+    if use_ttf:
+        pixel_rows = font_ttf.render_text_rows(
+            text, columns=config.columns,
+            char_height=char_height,
+            font_path=font_path,
+            rotate=rotate,
+        )
+    else:
+        if config.columns != 10:
+            # Bitmap font only works for 10 columns; fall back to TTF
+            pixel_rows = font_ttf.render_text_rows(
+                text, columns=config.columns,
+                char_height=char_height,
+                font_path=font_path,
+                rotate=rotate,
+            )
+        else:
+            pixel_rows = font_bitmap.render_text_rows(text)
+
+    return _center_in_grid(pixel_rows, config)
+
+
+def _should_use_ttf(font_mode: str, config: BeadConfig) -> bool:
+    if font_mode == 'ttf':
+        return True
+    if font_mode == 'bitmap':
+        return False
+    # auto: use bitmap for 10-col (ring), TTF for larger
+    return config.columns > 10
+
+
+def _center_in_grid(pixel_rows: list[list[int]], config: BeadConfig) -> list[list[int]]:
+    """Center pixel rows vertically in a fabric grid."""
+    n = len(pixel_rows)
+    cols = config.columns
+
+    # Ensure all rows are the right width
+    normalized = []
+    for row in pixel_rows:
+        if len(row) < cols:
+            # Pad with zeros
+            normalized.append(row + [0] * (cols - len(row)))
+        elif len(row) > cols:
+            normalized.append(row[:cols])
+        else:
+            normalized.append(row)
+
+    if n > config.rows:
+        normalized = normalized[:config.rows]
+        n = config.rows
+
+    top_pad = (config.rows - n) // 2
+    fabric: list[list[int]] = []
+    for ri in range(config.rows):
+        idx = ri - top_pad
+        if 0 <= idx < n:
+            fabric.append(list(normalized[idx]))
+        else:
+            fabric.append([0] * cols)
+    return fabric

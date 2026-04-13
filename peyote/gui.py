@@ -1,0 +1,351 @@
+"""NiceGUI-based peyote pattern designer."""
+
+import io
+import json as json_mod
+import base64
+
+from nicegui import ui, app
+
+from peyote.sizing import BeadConfig, PRESETS
+from peyote.colors import ColorPalette, PALETTE_DEFS, get_palette
+from peyote.font import text_to_fabric
+from peyote.patterns import PATTERN_CATALOG
+from peyote.compose import (
+    compose_text_with_border,
+    compose_text_with_background,
+    compose_pattern_only,
+)
+from peyote.export import render_combined_png
+from peyote.grid import count_beads
+
+
+def build_fabric(text, preset, columns, rows, layout, pattern_name,
+                 border_rows_val, font_mode, rotate,
+                 use_palette, palette_name, bg_color, fg_color):
+    """Build fabric grid and palette from current settings."""
+    # Config
+    if preset != 'custom':
+        p = PRESETS[preset]
+        config = BeadConfig(columns=p.columns, rows=rows or p.rows)
+    else:
+        config = BeadConfig(columns=columns, rows=rows)
+
+    # Palette
+    if use_palette:
+        palette = get_palette(palette_name)
+    else:
+        palette = ColorPalette.two_color(bg_color, fg_color)
+
+    # Fabric
+    if layout == 'Text Only':
+        fabric = text_to_fabric(text or 'HELLO', config, font_mode=font_mode, rotate=rotate)
+        title = text or 'Pattern'
+    elif layout == 'Text + Border':
+        fabric = compose_text_with_border(
+            text or 'HELLO', config,
+            border_pattern=pattern_name, border_rows=border_rows_val,
+            font_mode=font_mode, rotate=rotate)
+        title = text or 'Pattern'
+    elif layout == 'Text + Background':
+        fabric = compose_text_with_background(
+            text or 'HELLO', config,
+            background_pattern=pattern_name,
+            font_mode=font_mode, rotate=rotate)
+        title = text or 'Pattern'
+    elif layout == 'Pattern Only':
+        fabric = compose_pattern_only(pattern_name, config)
+        title = f'{pattern_name} pattern'
+    else:
+        fabric = text_to_fabric(text or 'HELLO', config, font_mode=font_mode, rotate=rotate)
+        title = text or 'Pattern'
+
+    return fabric, config, palette, title
+
+
+def render_to_bytes(fabric, title, config, palette, view='fabric'):
+    """Render to PNG bytes."""
+    img = render_combined_png(fabric, title, config, palette, view=view)
+    buf = io.BytesIO()
+    img.save(buf, format='PNG')
+    return buf.getvalue()
+
+
+def create_ui():
+    # State defaults
+    state = {
+        'text': 'HELLO',
+        'preset': 'ring',
+        'columns': 10,
+        'rows': 72,
+        'layout': 'Text Only',
+        'pattern': 'chevron',
+        'border_rows': 10,
+        'font_mode': 'auto',
+        'rotate': True,
+        'use_palette': False,
+        'palette_name': 'classic',
+        'bg_color': '#E8A0A8',
+        'fg_color': '#C82020',
+        'zoom': 300,  # px max-width per image
+    }
+
+    def update_preview():
+        try:
+            fabric, config, palette, title = build_fabric(
+                state['text'], state['preset'], state['columns'], state['rows'],
+                state['layout'], state['pattern'], state['border_rows'],
+                state['font_mode'], state['rotate'],
+                state['use_palette'], state['palette_name'],
+                state['bg_color'], state['fg_color'])
+
+            # Fabric preview
+            png_bytes = render_to_bytes(fabric, title, config, palette, view='fabric')
+            fabric_img.set_source(f'data:image/png;base64,{base64.b64encode(png_bytes).decode()}')
+
+            # Pattern preview
+            pat_bytes = render_to_bytes(fabric, title, config, palette, view='pattern')
+            pattern_img.set_source(f'data:image/png;base64,{base64.b64encode(pat_bytes).decode()}')
+
+            # Update zoom sizing
+            z = state['zoom']
+            fabric_container.style(f'width: {z}px;')
+            pattern_container.style(f'width: {z}px;')
+
+            # Bead count
+            counts = count_beads(fabric, config)
+            total = sum(counts.values())
+            count_lines = []
+            for idx in sorted(counts.keys()):
+                name = palette.names.get(idx, f'Color {idx}')
+                lbl = palette.label(idx)
+                count_lines.append(f'{lbl} ({name}): {counts[idx]} beads')
+            count_lines.append(f'**Total: {total} beads**')
+            bead_count_label.set_content('\n\n'.join(count_lines))
+
+            # Store for downloads
+            state['_fabric'] = fabric
+            state['_config'] = config
+            state['_palette'] = palette
+            state['_title'] = title
+
+        except Exception as e:
+            bead_count_label.set_content(f'Error: {e}')
+
+    def download_png():
+        fabric = state.get('_fabric')
+        if not fabric:
+            return
+        png = render_to_bytes(fabric, state['_title'], state['_config'],
+                              state['_palette'], view='both')
+        ui.download(png, 'peyote-pattern.png')
+
+    def download_svg():
+        fabric = state.get('_fabric')
+        if not fabric:
+            return
+        from peyote.renderer import make_fabric_svg
+        svg_str, _, _ = make_fabric_svg(fabric, state['_title'],
+                                        state['_config'], state['_palette'])
+        ui.download(svg_str.encode('utf-8'), 'peyote-pattern.svg')
+
+    def download_json():
+        fabric = state.get('_fabric')
+        if not fabric:
+            return
+        config = state['_config']
+        palette = state['_palette']
+        data = {
+            'title': state['_title'],
+            'config': {
+                'columns': config.columns, 'rows': config.rows,
+                'bead_width': config.bead_width, 'bead_height': config.bead_height,
+                'bead_margin': config.bead_margin, 'corner_radius': config.corner_radius,
+            },
+            'palette': {
+                'colors': {str(k): v for k, v in palette.colors.items()},
+                'names': {str(k): v for k, v in palette.names.items()},
+            },
+            'fabric': fabric,
+        }
+        ui.download(json_mod.dumps(data, indent=2).encode(), 'peyote-pattern.json')
+
+    def download_pdf():
+        fabric = state.get('_fabric')
+        if not fabric:
+            return
+        from peyote.renderer import make_pattern_svg
+        import cairosvg
+        svg_str, _, _ = make_pattern_svg(fabric, state['_title'],
+                                         state['_config'], state['_palette'])
+        pdf_bytes = cairosvg.svg2pdf(bytestring=svg_str.encode('utf-8'))
+        ui.download(pdf_bytes, 'peyote-pattern.pdf')
+
+    # ── Layout ────────────────────────────────────────────────────────
+    ui.page_title('Peyote Pattern Designer')
+
+    with ui.header().classes('bg-primary'):
+        ui.label('Peyote Pattern Designer').classes('text-h5 text-white')
+
+    with ui.splitter(value=25).classes('w-full h-full') as splitter:
+        with splitter.before:
+            with ui.column().classes('w-full p-4 gap-2'):
+                # Size
+                ui.label('Size').classes('text-subtitle1 font-bold')
+                preset_select = ui.select(
+                    list(PRESETS.keys()) + ['custom'],
+                    value=state['preset'], label='Preset',
+                    on_change=lambda e: (
+                        state.update({'preset': e.value}),
+                        state.update({'columns': PRESETS[e.value].columns,
+                                      'rows': PRESETS[e.value].rows}
+                                     if e.value != 'custom' else {}),
+                        cols_input.set_value(state['columns']),
+                        rows_input.set_value(state['rows']),
+                        update_preview(),
+                    )
+                ).classes('w-full')
+
+                cols_input = ui.number('Columns', value=state['columns'],
+                                       min=4, max=100, step=2,
+                                       on_change=lambda e: (
+                                           state.update({'columns': int(e.value) if e.value else 10}),
+                                           update_preview(),
+                                       )).classes('w-full')
+
+                rows_input = ui.number('Rows', value=state['rows'],
+                                        min=10, max=500,
+                                        on_change=lambda e: (
+                                            state.update({'rows': int(e.value) if e.value else 72}),
+                                            update_preview(),
+                                        )).classes('w-full')
+
+                ui.separator()
+
+                # Content
+                ui.label('Content').classes('text-subtitle1 font-bold')
+                layout_select = ui.select(
+                    ['Text Only', 'Text + Border', 'Text + Background', 'Pattern Only'],
+                    value=state['layout'], label='Layout',
+                    on_change=lambda e: (
+                        state.update({'layout': e.value}),
+                        update_preview(),
+                    )
+                ).classes('w-full')
+
+                text_input = ui.input('Text', value=state['text'],
+                                       on_change=lambda e: (
+                                           state.update({'text': e.value}),
+                                           update_preview(),
+                                       )).classes('w-full')
+
+                font_select = ui.select(
+                    ['auto', 'ttf', 'bitmap'], value='auto', label='Font',
+                    on_change=lambda e: (
+                        state.update({'font_mode': e.value}),
+                        update_preview(),
+                    )
+                ).classes('w-full')
+
+                ui.switch('Sideways text (rings)',
+                          value=state['rotate'],
+                          on_change=lambda e: (
+                              state.update({'rotate': e.value}),
+                              update_preview(),
+                          ))
+
+                pattern_select = ui.select(
+                    list(PATTERN_CATALOG.keys()),
+                    value=state['pattern'], label='Pattern',
+                    on_change=lambda e: (
+                        state.update({'pattern': e.value}),
+                        update_preview(),
+                    )
+                ).classes('w-full')
+
+                border_slider = ui.slider(min=2, max=40, value=state['border_rows'],
+                                          on_change=lambda e: (
+                                              state.update({'border_rows': int(e.value)}),
+                                              update_preview(),
+                                          )).props('label')
+                ui.label('Border rows').classes('text-caption')
+
+                ui.separator()
+
+                # Colors
+                ui.label('Colors').classes('text-subtitle1 font-bold')
+                ui.switch('Use named palette',
+                          value=state['use_palette'],
+                          on_change=lambda e: (
+                              state.update({'use_palette': e.value}),
+                              update_preview(),
+                          ))
+
+                palette_select = ui.select(
+                    list(PALETTE_DEFS.keys()),
+                    value=state['palette_name'], label='Palette',
+                    on_change=lambda e: (
+                        state.update({'palette_name': e.value}),
+                        update_preview(),
+                    )
+                ).classes('w-full')
+
+                with ui.row().classes('w-full gap-2'):
+                    ui.color_input('Background', value=state['bg_color'],
+                                   on_change=lambda e: (
+                                       state.update({'bg_color': e.value}),
+                                       update_preview(),
+                                   )).classes('w-1/2')
+                    ui.color_input('Foreground', value=state['fg_color'],
+                                   on_change=lambda e: (
+                                       state.update({'fg_color': e.value}),
+                                       update_preview(),
+                                   )).classes('w-1/2')
+
+                ui.separator()
+
+                # Downloads
+                ui.label('Export').classes('text-subtitle1 font-bold')
+                with ui.row().classes('w-full gap-1'):
+                    ui.button('PNG', on_click=download_png, icon='image').props('dense')
+                    ui.button('SVG', on_click=download_svg, icon='code').props('dense')
+                    ui.button('PDF', on_click=download_pdf, icon='picture_as_pdf').props('dense')
+                    ui.button('JSON', on_click=download_json, icon='data_object').props('dense')
+
+        with splitter.after:
+            with ui.column().classes('w-full p-4 gap-2 items-start'):
+                with ui.row().classes('gap-2 items-center'):
+                    ui.label('Zoom:').classes('text-caption')
+                    ui.button(icon='remove', on_click=lambda: (
+                        state.update({'zoom': max(100, state['zoom'] - 50)}),
+                        update_preview(),
+                    )).props('dense flat size=sm')
+                    ui.button(icon='add', on_click=lambda: (
+                        state.update({'zoom': min(800, state['zoom'] + 50)}),
+                        update_preview(),
+                    )).props('dense flat size=sm')
+                    ui.button('Reset', on_click=lambda: (
+                        state.update({'zoom': 300}),
+                        update_preview(),
+                    )).props('dense flat size=sm')
+
+                with ui.row().classes('gap-4 items-start'):
+                    with ui.column().classes('items-center'):
+                        ui.label('Working Pattern').classes('text-subtitle1 font-bold')
+                        pattern_container = ui.element('div').style(f'width: {state["zoom"]}px;')
+                        with pattern_container:
+                            pattern_img = ui.image().classes('w-full')
+                    with ui.column().classes('items-center'):
+                        ui.label('Fabric Preview').classes('text-subtitle1 font-bold')
+                        fabric_container = ui.element('div').style(f'width: {state["zoom"]}px;')
+                        with fabric_container:
+                            fabric_img = ui.image().classes('w-full')
+
+                ui.label('Bead Count').classes('text-subtitle1 font-bold')
+                bead_count_label = ui.markdown('').classes('w-full')
+
+    # Initial render
+    update_preview()
+
+
+create_ui()
+ui.run(title='Peyote Pattern Designer', port=8080)
