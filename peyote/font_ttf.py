@@ -7,8 +7,10 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter
 # Regular weight preferred — bold produces strokes that are too thick at
 # small bead counts; the stroke-width normalisation pass ensures visibility.
 _FONT_SEARCH = [
+    '/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf',
     '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
     '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+    '/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf',
     '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
     '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
     '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf',
@@ -143,7 +145,7 @@ def _measure_char_widths(text: str, font_path: str, glyph_height: int,
 
     # Blend proportional widths toward the average so narrow letters (I)
     # don't vanish and wide letters (M) don't dominate.
-    blend = 0.5  # 0 = monospace, 1 = fully proportional
+    blend = 1.0  # 0 = monospace, 1 = fully proportional
     mean_raw = sum(raw_widths) / len(raw_widths) if raw_widths else 1
     widths = []
     for w in raw_widths:
