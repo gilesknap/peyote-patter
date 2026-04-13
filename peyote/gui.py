@@ -213,14 +213,18 @@ def create_ui():
                 cols_input = ui.number('Columns', value=state['columns'],
                                        min=4, max=100, step=2,
                                        on_change=lambda e: (
-                                           state.update({'columns': int(e.value) if e.value else 10}),
+                                           state.update({'columns': int(e.value) if e.value else 10,
+                                                         'preset': 'custom'}),
+                                           preset_select.set_value('custom'),
                                            update_preview(),
                                        )).classes('w-full')
 
                 rows_input = ui.number('Rows', value=state['rows'],
                                         min=10, max=500,
                                         on_change=lambda e: (
-                                            state.update({'rows': int(e.value) if e.value else 72}),
+                                            state.update({'rows': int(e.value) if e.value else 72,
+                                                          'preset': 'custom'}),
+                                            preset_select.set_value('custom'),
                                             update_preview(),
                                         )).classes('w-full')
 
