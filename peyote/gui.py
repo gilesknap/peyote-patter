@@ -14,14 +14,13 @@ from peyote.compose import (
     compose_text_with_border,
     compose_text_with_background,
     compose_pattern_only,
-    default_border_rows,
 )
 from peyote.export import render_combined_png
 from peyote.grid import count_beads
 
 
 def build_fabric(text, preset, columns, rows, layout, pattern_name,
-                 border_rows_val, font_mode, rotate, border,
+                 font_mode, rotate, margin,
                  bg_color, fg_color, border_color):
     """Build fabric grid and palette from current settings."""
     # Config
@@ -39,25 +38,25 @@ def build_fabric(text, preset, columns, rows, layout, pattern_name,
 
     # Fabric
     if layout == 'Text Only':
-        fabric = text_to_fabric(text or 'HELLO', config, font_mode=font_mode, rotate=rotate, border=border)
+        fabric = text_to_fabric(text or 'HELLO', config, font_mode=font_mode, rotate=rotate, margin=margin)
         title = text or 'Pattern'
     elif layout == 'Text + Border':
         fabric = compose_text_with_border(
             text or 'HELLO', config,
-            border_pattern=pattern_name, border_rows=border_rows_val,
-            font_mode=font_mode, rotate=rotate, border=border)
+            border_pattern=pattern_name,
+            font_mode=font_mode, rotate=rotate, margin=margin)
         title = text or 'Pattern'
     elif layout == 'Text + Background':
         fabric = compose_text_with_background(
             text or 'HELLO', config,
             background_pattern=pattern_name,
-            font_mode=font_mode, rotate=rotate, border=border)
+            font_mode=font_mode, rotate=rotate, margin=margin)
         title = text or 'Pattern'
     elif layout == 'Pattern Only':
         fabric = compose_pattern_only(pattern_name, config)
         title = f'{pattern_name} pattern'
     else:
-        fabric = text_to_fabric(text or 'HELLO', config, font_mode=font_mode, rotate=rotate, border=border)
+        fabric = text_to_fabric(text or 'HELLO', config, font_mode=font_mode, rotate=rotate, margin=margin)
         title = text or 'Pattern'
 
     return fabric, config, palette, title
@@ -80,8 +79,7 @@ def create_ui():
         'rows': 72,
         'layout': 'Text Only',
         'pattern': 'chevron',
-        'border': 0,
-        'border_rows': 10,
+        'margin': 0,
         'font_mode': 'auto',  # kept for build_fabric compat
         'rotate': True,
         'palette_name': 'classic',
@@ -95,8 +93,8 @@ def create_ui():
         try:
             fabric, config, palette, title = build_fabric(
                 state['text'], state['preset'], state['columns'], state['rows'],
-                state['layout'], state['pattern'], state['border_rows'],
-                state['font_mode'], state['rotate'], state['border'],
+                state['layout'], state['pattern'],
+                state['font_mode'], state['rotate'], state['margin'],
                 state['bg_color'], state['fg_color'], state['border_color'])
 
             # Fabric preview
@@ -226,10 +224,10 @@ def create_ui():
                                             update_preview(),
                                         )).classes('flex-1')
 
-                ui.number('Border', value=state['border'],
+                ui.number('Margin', value=state['margin'],
                           min=0, max=20,
                           on_change=lambda e: (
-                              state.update({'border': int(e.value) if e.value else 0}),
+                              state.update({'margin': int(e.value) if e.value else 0}),
                               update_preview(),
                           )).classes('flex-1')
 
@@ -267,13 +265,6 @@ def create_ui():
                     update_preview(),
                 )
             ).classes('w-full')
-
-            border_slider = ui.slider(min=1, max=40, value=state['border_rows'],
-                                      on_change=lambda e: (
-                                          state.update({'border_rows': int(e.value)}),
-                                          update_preview(),
-                                      )).props('label')
-            ui.label('Border rows').classes('text-caption')
 
             ui.separator()
 
@@ -355,16 +346,6 @@ def create_ui():
 
             ui.label('Bead Count').classes('text-subtitle1 font-bold')
             bead_count_label = ui.markdown('').classes('w-full')
-
-    # Calculate initial border rows from default text
-    if state['preset'] != 'custom':
-        p = PRESETS[state['preset']]
-        cfg = BeadConfig(columns=p.columns, rows=state['rows'] or p.rows)
-    else:
-        cfg = BeadConfig(columns=state['columns'], rows=state['rows'])
-    br = default_border_rows(state['text'] or 'HELLO', cfg, rotate=state['rotate'])
-    state['border_rows'] = br
-    border_slider.set_value(br)
 
     # Initial render
     update_preview()

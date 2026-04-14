@@ -49,27 +49,37 @@ def compose_text_with_border(
     text: str,
     config: BeadConfig,
     border_pattern: str = 'chevron',
-    border_rows: int = 10,
+    border_rows: int | None = None,
     font_mode: str = 'auto',
     font_path: str | None = None,
     rotate: bool = True,
     border_color: int = 2,
-    border: int = 0,
+    margin: int = 0,
+    gap: int = 2,
     **pattern_kwargs,
 ) -> list[list[int]]:
     """Text centered with decorative borders at the strip ends.
 
-    Borders start at the top/bottom edges and grow *inward* toward the text.
-    ``border_rows`` controls how many rows of pattern from each edge.
+    Borders fill from the top/bottom edges inward, stopping *gap* rows before
+    the rendered text. If ``border_rows`` is None (default) this is computed
+    automatically; otherwise it overrides the auto-size.
+    The border pattern spans the full column width, ignoring ``margin``.
     Border ON-beads use *border_color* (default 2) so they can be coloured
     independently from the text foreground.
     """
     text_fabric = text_to_fabric(
         text, config, font_mode=font_mode, font_path=font_path, rotate=rotate,
-        border=border,
+        margin=margin,
     )
 
-    # Generate border pattern
+    # Auto-size borders to land *gap* rows before text, if not specified
+    if border_rows is None:
+        first_row, last_row = text_extent(text_fabric, config)
+        top_space = first_row - gap
+        bottom_space = config.rows - 1 - last_row - gap
+        border_rows = max(1, min(top_space, bottom_space))
+
+    # Generate border pattern (spans full width, ignoring margin)
     pat_fn = PATTERN_CATALOG.get(border_pattern)
     if pat_fn is None:
         raise ValueError(f"Unknown pattern '{border_pattern}'. "
@@ -103,7 +113,7 @@ def compose_text_with_background(
     font_mode: str = 'auto',
     font_path: str | None = None,
     rotate: bool = True,
-    border: int = 0,
+    margin: int = 0,
     **pattern_kwargs,
 ) -> list[list[int]]:
     """Text overlaid on a decorative background. Text pixels override background."""
@@ -117,7 +127,7 @@ def compose_text_with_background(
 
     text_grid = text_to_fabric(
         text, config, font_mode=font_mode, font_path=font_path, rotate=rotate,
-        border=border,
+        margin=margin,
     )
 
     return overlay(bg, text_grid)
