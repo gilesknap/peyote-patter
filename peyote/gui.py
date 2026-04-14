@@ -10,7 +10,8 @@ from peyote.sizing import BeadConfig, PRESETS
 from peyote.colors import ColorPalette, PALETTE_DEFS, darken
 from peyote.font import text_to_fabric
 from peyote.patterns import (
-    PATTERN_CATALOG, pattern_repeat_default, pattern_repeat_kwargs,
+    PATTERN_CATALOG, SINGLE_COLOR_PATTERNS, TWO_COLOR_PATTERNS,
+    pattern_repeat_default, pattern_repeat_kwargs,
 )
 from peyote.compose import (
     compose_text_with_border,
@@ -316,9 +317,16 @@ def create_ui():
                     repeat_input.set_value(new_default)
                 update_preview()
 
+            # Group patterns by color count: 1-color first, then 2-color
+            # with a suffix so the split is visible in the dropdown.
+            pattern_options = {
+                **{n: n for n in SINGLE_COLOR_PATTERNS},
+                **{n: f'{n}  (2-color)' for n in TWO_COLOR_PATTERNS},
+            }
+
             with ui.row().classes('w-full gap-2 no-wrap'):
                 pattern_select = ui.select(
-                    list(PATTERN_CATALOG.keys()),
+                    pattern_options,
                     value=state['pattern'], label='Pattern',
                     on_change=lambda e: on_pattern_change(e.value),
                 ).props('outlined dense').classes('flex-1')

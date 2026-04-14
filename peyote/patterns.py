@@ -411,6 +411,20 @@ PATTERN_CATALOG: dict[str, callable] = {
 }
 
 
+# Patterns that emit a single ON color (index 1). They look good with just
+# Background + Accent 1 and ignore Accent 2.
+SINGLE_COLOR_PATTERNS: list[str] = [
+    'stripe-h', 'stripe-v', 'chevron', 'diamond', 'zigzag',
+    'checker', 'border', 'dots', 'wave', 'gradient', 'greek-key',
+]
+
+# Patterns that emit two ON colors (indices 1 and 2). These use both
+# Accent 1 and Accent 2 and are the ones that benefit from the full palette.
+TWO_COLOR_PATTERNS: list[str] = [
+    'argyle', 'scales', 'flames', 'braid', 'honeycomb',
+]
+
+
 # "Repeat" maps the GUI's single repeat-in-beads control onto each pattern's
 # internal period parameter. Value shape: (kwarg_name, default_beads, convert).
 # Patterns missing from this dict don't have a meaningful periodic knob:
