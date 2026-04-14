@@ -103,22 +103,23 @@ def create_ui():
     # State defaults
     state = {
         'text': 'HELLO',
-        'preset': 'ring',
-        'columns': 10,
-        'rows': 72,
-        'layout': 'Text Only',
-        'pattern': 'chevron',
+        'preset': 'bookmark',
+        'columns': 20,
+        'rows': 200,
+        'layout': 'Text + Border Wrap',
+        'pattern': 'argyle',
         'margin': 0,
         'gap': 2,
-        'repeat': 8,  # beads between pattern repeats; inert when pattern has no period
+        'repeat': 10,  # argyle default; inert when pattern has no period
         'font_mode': 'auto',  # kept for build_fabric compat
         'font_name': DEFAULT_FONT_NAME,
         'rotate': True,
-        'palette_name': 'classic',
-        'bg_color': '#E8A0A8',
-        'text_color': '#C82020',
-        'accent1_color': '#8B4513',
-        'accent2_color': '#53290b',
+        'palette_name': 'gold',
+        # Gold palette: Ivory / Gold / Amber + a darkened Amber for Accent 2
+        'bg_color': '#FFFDE7',
+        'text_color': '#FFD600',
+        'accent1_color': '#FF6F00',
+        'accent2_color': '#994200',
         'zoom': 300,  # px max-width per image
     }
 
