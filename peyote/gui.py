@@ -24,7 +24,7 @@ from peyote.font_ttf import available_fonts, resolve_font, DEFAULT_FONT_NAME
 def build_fabric(text, preset, columns, rows, layout, pattern_name,
                  font_mode, rotate, margin,
                  bg_color, fg_color, border_color,
-                 font_path=None):
+                 font_path=None, gap=2):
     """Build fabric grid and palette from current settings."""
     # Config
     if preset != 'custom':
@@ -33,22 +33,25 @@ def build_fabric(text, preset, columns, rows, layout, pattern_name,
     else:
         config = BeadConfig(columns=columns, rows=rows)
 
-    # Palette
-    if layout == 'Text + Border':
-        palette = ColorPalette.three_color(bg_color, fg_color, border_color)
-    else:
+    # Palette — everything except pure Text Only benefits from the 3rd slot
+    # (borders, pattern backgrounds, or 2-color decorative patterns).
+    if layout == 'Text Only':
         palette = ColorPalette.two_color(bg_color, fg_color)
+    else:
+        palette = ColorPalette.three_color(bg_color, fg_color, border_color)
 
     # Fabric
     if layout == 'Text Only':
         fabric = text_to_fabric(text or 'HELLO', config, font_mode=font_mode,
                                 font_path=font_path, rotate=rotate, margin=margin)
         title = text or 'Pattern'
-    elif layout == 'Text + Border':
+    elif layout in ('Text + Border', 'Text + Border Wrap'):
         fabric = compose_text_with_border(
             text or 'HELLO', config,
             border_pattern=pattern_name,
-            font_mode=font_mode, font_path=font_path, rotate=rotate, margin=margin)
+            font_mode=font_mode, font_path=font_path, rotate=rotate,
+            margin=margin, gap=gap,
+            wrap_border=(layout == 'Text + Border Wrap'))
         title = text or 'Pattern'
     elif layout == 'Text + Background':
         fabric = compose_text_with_background(
@@ -94,6 +97,7 @@ def create_ui():
         'layout': 'Text Only',
         'pattern': 'chevron',
         'margin': 0,
+        'gap': 2,
         'font_mode': 'auto',  # kept for build_fabric compat
         'font_name': DEFAULT_FONT_NAME,
         'rotate': True,
@@ -111,7 +115,8 @@ def create_ui():
                 state['layout'], state['pattern'],
                 state['font_mode'], state['rotate'], state['margin'],
                 state['bg_color'], state['fg_color'], state['border_color'],
-                font_path=resolve_font(state['font_name']))
+                font_path=resolve_font(state['font_name']),
+                gap=state['gap'])
 
             # Fabric preview — send SVG directly to browser (browser renders natively,
             # avoiding the cairosvg→PNG roundtrip that dominates render time).
@@ -256,7 +261,8 @@ def create_ui():
             # Content
             ui.label('Content').classes('text-subtitle1 font-bold mt-4')
             layout_select = ui.select(
-                ['Text Only', 'Text + Border', 'Text + Background', 'Pattern Only'],
+                ['Text Only', 'Text + Border', 'Text + Border Wrap',
+                 'Text + Background', 'Pattern Only'],
                 value=state['layout'], label='Layout',
                 on_change=lambda e: (
                     state.update({'layout': e.value}),
@@ -286,14 +292,22 @@ def create_ui():
                           update_preview(),
                       ))
 
-            pattern_select = ui.select(
-                list(PATTERN_CATALOG.keys()),
-                value=state['pattern'], label='Pattern',
-                on_change=lambda e: (
-                    state.update({'pattern': e.value}),
-                    update_preview(),
-                )
-            ).props('outlined dense').classes('w-full')
+            with ui.row().classes('w-full gap-2 no-wrap'):
+                pattern_select = ui.select(
+                    list(PATTERN_CATALOG.keys()),
+                    value=state['pattern'], label='Pattern',
+                    on_change=lambda e: (
+                        state.update({'pattern': e.value}),
+                        update_preview(),
+                    )
+                ).props('outlined dense').classes('flex-1')
+
+                ui.number('Gap', value=state['gap'],
+                          min=0, max=20,
+                          on_change=lambda e: (
+                              state.update({'gap': int(e.value) if e.value is not None else 2}),
+                              update_preview(),
+                          )).props('outlined dense').style('width: 90px;')
 
             # Colors
             ui.label('Colors').classes('text-subtitle1 font-bold mt-4')
@@ -320,12 +334,12 @@ def create_ui():
                                            state.update({'bg_color': e.value}),
                                            update_preview(),
                                        )).props('outlined dense').classes('w-full')
-            fg_picker = ui.color_input('Foreground', value=state['fg_color'],
+            fg_picker = ui.color_input('Accent 1', value=state['fg_color'],
                                        on_change=lambda e: (
                                            state.update({'fg_color': e.value}),
                                            update_preview(),
                                        )).props('outlined dense').classes('w-full')
-            border_picker = ui.color_input('Border', value=state['border_color'],
+            border_picker = ui.color_input('Accent 2', value=state['border_color'],
                                            on_change=lambda e: (
                                                state.update({'border_color': e.value}),
                                                update_preview(),

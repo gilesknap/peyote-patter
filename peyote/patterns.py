@@ -241,6 +241,156 @@ def greek_key(columns: int, rows: int, size: int = 4,
     return grid
 
 
+def argyle(columns: int, rows: int, size: int = 5,
+           color1: int = 1, color2: int = 2, bg: int = 0) -> list[list[int]]:
+    """Classic argyle: alternating filled diamonds with crossing stripes.
+
+    Diamond interiors use *color1*, the crossing X-lines use *color2*.
+    """
+    grid = []
+    period = size * 2
+    for r in range(rows):
+        row = []
+        for c in range(columns):
+            cr = r % period
+            cc = c % period
+            dr = abs(cr - size)
+            dc = abs(cc - size)
+            tile_r = r // period
+            tile_c = c // period
+            val = bg
+            # Alternating filled diamonds
+            if dr + dc < size and (tile_r + tile_c) % 2 == 0:
+                val = color1
+            # Thin crossing lines every `size` beads — overwrite so they stitch
+            # the diamonds together visually
+            if (r + c) % size == 0 or (r - c) % size == 0:
+                val = color2
+            row.append(val)
+        grid.append(row)
+    return grid
+
+
+def scales(columns: int, rows: int, radius: int = 3,
+           color1: int = 1, color2: int = 2, bg: int = 0) -> list[list[int]]:
+    """Fish / dragon scales — alternating arc rows in two colors.
+
+    Each scale row is *radius* beads tall. Adjacent scale rows shift by
+    *radius* columns so arcs interlock like a real scale mosaic.
+    """
+    grid = []
+    period = radius * 2
+    for r in range(rows):
+        scale_row = r // radius
+        row_in_scale = r % radius
+        offset = radius if scale_row % 2 else 0
+        color = color1 if scale_row % 2 == 0 else color2
+        row = [bg] * columns
+        for c in range(columns):
+            tile_c = (c + offset) % period
+            dx = tile_c - radius
+            # Arc edge: points on the circle of given radius
+            dist_sq = dx * dx + row_in_scale * row_in_scale
+            if (radius - 1) ** 2 < dist_sq <= radius ** 2:
+                row[c] = color
+            # Fill the arc bottom with the scale color for a solid look
+            elif dist_sq <= (radius - 1) ** 2 and row_in_scale >= radius - 1:
+                row[c] = color
+        grid.append(row)
+    return grid
+
+
+def flames(columns: int, rows: int, size: int = 5,
+           color1: int = 1, color2: int = 2, bg: int = 0) -> list[list[int]]:
+    """Upward-licking flames — alternating triangular tongues in two colors."""
+    period_c = size * 2
+    period_r = size * 2
+    grid = []
+    for r in range(rows):
+        row = []
+        for c in range(columns):
+            tile_r = r % period_r
+            tile_c = c % period_c
+            # Flame rises from bottom of tile (tile_r=period_r-1) to tip (tile_r=0).
+            # Width tapers: at tile_r=k from bottom, flame half-width = k // 2 + 1.
+            from_bottom = period_r - 1 - tile_r
+            half_w = from_bottom // 2 + 1
+            # Two flame columns per period, offset — alternating colors
+            center1 = size // 2
+            center2 = size + size // 2
+            val = bg
+            if abs(tile_c - center1) < half_w:
+                val = color1
+            if abs(tile_c - center2) < half_w:
+                # Offset the phase vertically so flames alternate
+                alt_from_bottom = (from_bottom + size) % period_r
+                alt_half_w = alt_from_bottom // 2 + 1
+                if abs(tile_c - center2) < alt_half_w:
+                    val = color2
+            row.append(val)
+        grid.append(row)
+    return grid
+
+
+def braid(columns: int, rows: int, period: int = 8, width: int = 2,
+          color1: int = 1, color2: int = 2, bg: int = 0) -> list[list[int]]:
+    """Two strands weaving over/under each other down the strip."""
+    mid = columns // 2
+    amplitude = max(2, mid - 1)
+    grid = []
+    for r in range(rows):
+        row = [bg] * columns
+        # Phase 0..1 around the period; two strands are half a period apart
+        phase1 = (r % period) / period * 2 * math.pi
+        phase2 = phase1 + math.pi
+        offset1 = int(round(amplitude * math.sin(phase1)))
+        offset2 = int(round(amplitude * math.sin(phase2)))
+        # "Depth" — which strand is in front, alternates by half-period
+        strand1_front = (r % period) < period // 2
+        c1 = mid + offset1
+        c2 = mid + offset2
+        # Draw the back strand first, then the front, so the front overwrites
+        strands = [(c2, color2), (c1, color1)] if strand1_front \
+            else [(c1, color1), (c2, color2)]
+        for center, color in strands:
+            for w in range(-width // 2 + 1, width // 2 + 1):
+                cc = center + w
+                if 0 <= cc < columns:
+                    row[cc] = color
+        grid.append(row)
+    return grid
+
+
+def honeycomb(columns: int, rows: int, size: int = 3,
+              color1: int = 1, color2: int = 2, bg: int = 0) -> list[list[int]]:
+    """Hexagonal cells — alternating cell fills with shared walls."""
+    # A hex tile in bead coords is approximated as size*2 cols × size*2 rows,
+    # with offset rows shifted by size cols (honeycomb offset lattice).
+    period_r = size * 2
+    grid = []
+    for r in range(rows):
+        row = []
+        hex_row = r // period_r
+        row_in_hex = r % period_r
+        col_offset = size if hex_row % 2 else 0
+        for c in range(columns):
+            tile_c = (c + col_offset) % (size * 2)
+            # Wall: top/bottom edge of tile
+            on_wall = (row_in_hex == 0 or row_in_hex == period_r - 1)
+            # Side walls at tile_c == 0 or size*2-1
+            if tile_c == 0 or tile_c == size * 2 - 1:
+                on_wall = True
+            # Cell fill alternates
+            hex_col = (c + col_offset) // (size * 2)
+            fill = color1 if (hex_row + hex_col) % 2 == 0 else color2
+            if on_wall:
+                row.append(color2 if fill == color1 else color1)
+            else:
+                row.append(fill if row_in_hex not in (0, period_r - 1) else bg)
+        grid.append(row)
+    return grid
+
+
 PATTERN_CATALOG: dict[str, callable] = {
     'stripe-h': stripe_horizontal,
     'stripe-v': stripe_vertical,
@@ -253,4 +403,9 @@ PATTERN_CATALOG: dict[str, callable] = {
     'wave': wave,
     'gradient': gradient_dither,
     'greek-key': greek_key,
+    'argyle': argyle,
+    'scales': scales,
+    'flames': flames,
+    'braid': braid,
+    'honeycomb': honeycomb,
 }

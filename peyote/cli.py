@@ -51,8 +51,17 @@ def main():
                         help='Decorative pattern (no text, fills entire grid)')
     parser.add_argument('--border', choices=list(PATTERN_CATALOG.keys()),
                         help='Border pattern around text')
-    parser.add_argument('--border-rows', type=int, default=10,
-                        help='Rows for border pattern bands (default: 10)')
+    parser.add_argument('--border-rows', type=int, default=None,
+                        help='Rows for border pattern bands (default: auto-sized)')
+    parser.add_argument('--wrap-border', action='store_true',
+                        help='Extend border pattern into the left/right margin '
+                             'strips so it frames the text on all four sides')
+    parser.add_argument('--gap', type=int, default=2,
+                        help='Background bead rows between text and border '
+                             '(default: 2)')
+    parser.add_argument('--margin', type=int, default=0,
+                        help='Background bead columns on the long sides of '
+                             'text (default: 0)')
 
     # Colors
     parser.add_argument('--bg-color', default='#E8A0A8',
@@ -130,6 +139,9 @@ def main():
                 font_mode=args.font,
                 font_path=font_path,
                 rotate=rotate,
+                margin=args.margin,
+                gap=args.gap,
+                wrap_border=args.wrap_border,
             )
         else:
             fabric = text_to_fabric(
@@ -137,6 +149,7 @@ def main():
                 font_mode=args.font,
                 font_path=font_path,
                 rotate=rotate,
+                margin=args.margin,
             )
         title = args.title or args.text
     else:

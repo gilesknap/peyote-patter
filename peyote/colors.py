@@ -40,16 +40,16 @@ class ColorPalette:
 
     @classmethod
     def two_color(cls, bg: str, fg: str,
-                  bg_name: str = 'Background', fg_name: str = 'Foreground') -> 'ColorPalette':
+                  bg_name: str = 'Background', fg_name: str = 'Accent 1') -> 'ColorPalette':
         """Convenience for the common two-color case."""
         return cls.from_pairs([(bg, bg_name), (fg, fg_name)])
 
     @classmethod
-    def three_color(cls, bg: str, fg: str, border: str,
-                    bg_name: str = 'Background', fg_name: str = 'Foreground',
-                    border_name: str = 'Border') -> 'ColorPalette':
-        """Background + foreground + border color."""
-        return cls.from_pairs([(bg, bg_name), (fg, fg_name), (border, border_name)])
+    def three_color(cls, bg: str, accent1: str, accent2: str,
+                    bg_name: str = 'Background', accent1_name: str = 'Accent 1',
+                    accent2_name: str = 'Accent 2') -> 'ColorPalette':
+        """Background + two accent colors (text uses Accent 1, patterns can use both)."""
+        return cls.from_pairs([(bg, bg_name), (accent1, accent1_name), (accent2, accent2_name)])
 
     def label(self, index: int) -> str:
         """Short label for a color index (A, B, C, ...)."""

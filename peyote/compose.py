@@ -56,6 +56,7 @@ def compose_text_with_border(
     border_color: int = 2,
     margin: int = 0,
     gap: int = 2,
+    wrap_border: bool = False,
     **pattern_kwargs,
 ) -> list[list[int]]:
     """Text centered with decorative borders at the strip ends.
@@ -63,7 +64,15 @@ def compose_text_with_border(
     Borders fill from the top/bottom edges inward, stopping *gap* rows before
     the rendered text. If ``border_rows`` is None (default) this is computed
     automatically; otherwise it overrides the auto-size.
-    The border pattern spans the full column width, ignoring ``margin``.
+
+    If ``wrap_border`` is True, the border pattern also paints the outer
+    portion of the left and right margin columns between the top and bottom
+    bands, producing a full frame around the text. The side strips leave a
+    ``gap``-bead background buffer next to the text, mirroring the vertical
+    gap above/below. Side-strip width is ``margin - gap`` (per side); if
+    ``margin <= gap`` the side strips vanish. The frame is carved from one
+    full-grid pattern so all four sides align seamlessly.
+
     Border ON-beads use *border_color* (default 2) so they can be coloured
     independently from the text foreground.
     """
@@ -79,29 +88,61 @@ def compose_text_with_border(
         bottom_space = config.rows - 1 - last_row - gap
         border_rows = max(1, min(top_space, bottom_space))
 
-    # Generate border pattern (spans full width, ignoring margin)
     pat_fn = PATTERN_CATALOG.get(border_pattern)
     if pat_fn is None:
         raise ValueError(f"Unknown pattern '{border_pattern}'. "
                          f"Available: {list(PATTERN_CATALOG.keys())}")
 
-    kwargs = {'columns': config.columns, 'rows': border_rows}
-    kwargs.update(pattern_kwargs or {})
-    border_grid = pat_fn(**kwargs)
-
     result = [row[:] for row in text_fabric]
 
-    # Top border — starts at row 0
-    for i, brow in enumerate(border_grid):
-        if i >= config.rows:
-            break
-        result[i] = [border_color if v else 0 for v in brow]
+    if wrap_border:
+        # Generate the pattern at full grid size so the frame lines up on all
+        # four sides. Paint top/bottom bands + left/right margin strips.
+        full_kwargs = {'columns': config.columns, 'rows': config.rows}
+        full_kwargs.update(pattern_kwargs or {})
+        full_pat = pat_fn(**full_kwargs)
 
-    # Bottom border — ends at last row
-    for i, brow in enumerate(border_grid):
-        ri = config.rows - border_rows + i
-        if 0 <= ri < config.rows:
-            result[ri] = [border_color if v else 0 for v in brow]
+        def _stamp(ri: int, ci: int) -> None:
+            v = full_pat[ri][ci]
+            if v:
+                result[ri][ci] = border_color
+
+        # Top band
+        for ri in range(min(border_rows, config.rows)):
+            for ci in range(config.columns):
+                _stamp(ri, ci)
+        # Bottom band
+        for ri in range(max(0, config.rows - border_rows), config.rows):
+            for ci in range(config.columns):
+                _stamp(ri, ci)
+        # Side strips: outer (margin - gap) columns on each side so the
+        # border stays `gap` beads clear of the text horizontally, matching
+        # the vertical gap above/below. Vanishes when margin <= gap.
+        side_width = max(0, margin - gap)
+        if side_width > 0:
+            side_cols = list(range(side_width)) + \
+                list(range(config.columns - side_width, config.columns))
+            for ri in range(border_rows, config.rows - border_rows):
+                for ci in side_cols:
+                    _stamp(ri, ci)
+    else:
+        # Original behavior: separate border pattern sized to the band height,
+        # painted at top and bottom only.
+        kwargs = {'columns': config.columns, 'rows': border_rows}
+        kwargs.update(pattern_kwargs or {})
+        border_grid = pat_fn(**kwargs)
+
+        # Top border — starts at row 0
+        for i, brow in enumerate(border_grid):
+            if i >= config.rows:
+                break
+            result[i] = [border_color if v else 0 for v in brow]
+
+        # Bottom border — ends at last row
+        for i, brow in enumerate(border_grid):
+            ri = config.rows - border_rows + i
+            if 0 <= ri < config.rows:
+                result[ri] = [border_color if v else 0 for v in brow]
 
     return result
 
@@ -114,9 +155,17 @@ def compose_text_with_background(
     font_path: str | None = None,
     rotate: bool = True,
     margin: int = 0,
+    background_color: int = 2,
     **pattern_kwargs,
 ) -> list[list[int]]:
-    """Text overlaid on a decorative background. Text pixels override background."""
+    """Text overlaid on a decorative background.
+
+    Single-color patterns (0/1 only) are remapped to *background_color* so
+    they don't collide with the text's Accent 1 slot. Multi-color patterns
+    (those that already use index 2 or higher) are left as-is so their
+    palette intent is preserved. Text pixels overwrite the background where
+    they collide.
+    """
     pat_fn = PATTERN_CATALOG.get(background_pattern)
     if pat_fn is None:
         raise ValueError(f"Unknown pattern '{background_pattern}'")
@@ -124,6 +173,12 @@ def compose_text_with_background(
     kwargs = {'columns': config.columns, 'rows': config.rows}
     kwargs.update(pattern_kwargs or {})
     bg = pat_fn(**kwargs)
+
+    max_val = max((v for row in bg for v in row), default=0)
+    if max_val <= 1:
+        # Single-color pattern — push ON-bits into the Accent 2 slot
+        bg = [[background_color if v else 0 for v in row] for row in bg]
+    # else: multi-color pattern already uses indices 1..N — leave alone
 
     text_grid = text_to_fabric(
         text, config, font_mode=font_mode, font_path=font_path, rotate=rotate,
