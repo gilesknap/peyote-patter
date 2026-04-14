@@ -126,13 +126,25 @@ def create_ui():
             # Bead count
             counts = count_beads(fabric, config)
             total = sum(counts.values())
-            count_lines = [f'**{config.columns} beads per row**']
-            for idx in sorted(counts.keys()):
-                name = palette.names.get(idx, f'Color {idx}')
-                lbl = palette.label(idx)
-                count_lines.append(f'{lbl} ({name}): {counts[idx]} beads')
-            count_lines.append(f'**Total: {total} beads**')
-            bead_count_label.set_content('\n\n'.join(count_lines))
+            bead_count_container.clear()
+            with bead_count_container:
+                ui.label(f'{config.columns} beads per row').classes(
+                    'text-caption text-grey-7')
+                for idx in sorted(counts.keys()):
+                    name = palette.names.get(idx, f'Color {idx}')
+                    fill = palette.colors.get(idx, '#cccccc')
+                    with ui.row().classes('w-full items-center gap-2 no-wrap'):
+                        ui.element('div').style(
+                            f'width: 14px; height: 14px; border-radius: 3px; '
+                            f'background: {fill}; '
+                            f'border: 1px solid rgba(0,0,0,0.2); flex-shrink: 0;'
+                        )
+                        ui.label(name).classes('flex-1').style('min-width: 0;')
+                        ui.label(f'{counts[idx]}')
+                ui.separator()
+                with ui.row().classes('w-full items-center gap-2 no-wrap'):
+                    ui.label('Total').classes('flex-1 font-bold')
+                    ui.label(f'{total}').classes('font-bold')
 
             # Store for downloads
             state['_fabric'] = fabric
@@ -141,7 +153,9 @@ def create_ui():
             state['_title'] = title
 
         except Exception as e:
-            bead_count_label.set_content(f'Error: {e}')
+            bead_count_container.clear()
+            with bead_count_container:
+                ui.label(f'Error: {e}').classes('text-red')
 
     def download_png():
         fabric = state.get('_fabric')
@@ -181,17 +195,6 @@ def create_ui():
         }
         ui.download(json_mod.dumps(data, indent=2).encode(), 'peyote-pattern.json')
 
-    def download_pdf():
-        fabric = state.get('_fabric')
-        if not fabric:
-            return
-        from peyote.renderer import make_pattern_svg
-        import cairosvg
-        svg_str, _, _ = make_pattern_svg(fabric, state['_title'],
-                                         state['_config'], state['_palette'])
-        pdf_bytes = cairosvg.svg2pdf(bytestring=svg_str.encode('utf-8'))
-        ui.download(pdf_bytes, 'peyote-pattern.pdf')
-
     # ── Layout ────────────────────────────────────────────────────────
     ui.page_title('Peyote Pattern Designer')
 
@@ -216,7 +219,7 @@ def create_ui():
                     rows_input.set_value(state['rows']),
                     update_preview(),
                 )
-            ).classes('w-full')
+            ).props('outlined dense').classes('w-full')
 
             with ui.row().classes('w-full gap-2'):
                 cols_input = ui.number('Cols', value=state['columns'],
@@ -226,7 +229,7 @@ def create_ui():
                                                          'preset': 'custom'}),
                                            preset_select.set_value('custom'),
                                            update_preview(),
-                                       )).classes('flex-1')
+                                       )).props('outlined dense').classes('flex-1')
 
                 rows_input = ui.number('Rows', value=state['rows'],
                                         min=10, max=500,
@@ -235,19 +238,17 @@ def create_ui():
                                                           'preset': 'custom'}),
                                             preset_select.set_value('custom'),
                                             update_preview(),
-                                        )).classes('flex-1')
+                                        )).props('outlined dense').classes('flex-1')
 
                 ui.number('Margin', value=state['margin'],
                           min=0, max=20,
                           on_change=lambda e: (
                               state.update({'margin': int(e.value) if e.value else 0}),
                               update_preview(),
-                          )).classes('flex-1')
-
-            ui.separator()
+                          )).props('outlined dense').classes('flex-1')
 
             # Content
-            ui.label('Content').classes('text-subtitle1 font-bold')
+            ui.label('Content').classes('text-subtitle1 font-bold mt-4')
             layout_select = ui.select(
                 ['Text Only', 'Text + Border', 'Text + Background', 'Pattern Only'],
                 value=state['layout'], label='Layout',
@@ -255,13 +256,13 @@ def create_ui():
                     state.update({'layout': e.value}),
                     update_preview(),
                 )
-            ).classes('w-full')
+            ).props('outlined dense').classes('w-full')
 
             text_input = ui.input('Text', value=state['text'],
                                    on_change=lambda e: (
                                        state.update({'text': e.value}),
                                        update_preview(),
-                                   )).classes('w-full')
+                                   )).props('outlined dense').classes('w-full')
 
             ui.switch('Sideways text (rings)',
                       value=state['rotate'],
@@ -277,12 +278,10 @@ def create_ui():
                     state.update({'pattern': e.value}),
                     update_preview(),
                 )
-            ).classes('w-full')
-
-            ui.separator()
+            ).props('outlined dense').classes('w-full')
 
             # Colors
-            ui.label('Colors').classes('text-subtitle1 font-bold')
+            ui.label('Colors').classes('text-subtitle1 font-bold mt-4')
 
             def apply_palette(name):
                 colors = PALETTE_DEFS[name]
@@ -299,66 +298,82 @@ def create_ui():
                 list(PALETTE_DEFS.keys()),
                 value=state['palette_name'], label='Palette',
                 on_change=lambda e: apply_palette(e.value),
-            ).classes('w-full')
+            ).props('outlined dense').classes('w-full')
 
             bg_picker = ui.color_input('Background', value=state['bg_color'],
                                        on_change=lambda e: (
                                            state.update({'bg_color': e.value}),
                                            update_preview(),
-                                       )).classes('w-full')
+                                       )).props('outlined dense').classes('w-full')
             fg_picker = ui.color_input('Foreground', value=state['fg_color'],
                                        on_change=lambda e: (
                                            state.update({'fg_color': e.value}),
                                            update_preview(),
-                                       )).classes('w-full')
+                                       )).props('outlined dense').classes('w-full')
             border_picker = ui.color_input('Border', value=state['border_color'],
                                            on_change=lambda e: (
                                                state.update({'border_color': e.value}),
                                                update_preview(),
-                                           )).classes('w-full')
+                                           )).props('outlined dense').classes('w-full')
 
-            ui.separator()
+            # Bead Count
+            ui.label('Bead Count').classes('text-subtitle1 font-bold mt-4')
+            bead_count_container = ui.column().classes('w-full gap-1').style(
+                'border: 1px solid rgba(0,0,0,0.24); border-radius: 4px; '
+                'padding: 8px 12px;'
+            )
 
             # Downloads
-            ui.label('Export').classes('text-subtitle1 font-bold')
-            with ui.row().classes('w-full gap-1'):
-                ui.button('PNG', on_click=download_png, icon='image').props('dense')
-                ui.button('SVG', on_click=download_svg, icon='code').props('dense')
-                ui.button('PDF', on_click=download_pdf, icon='picture_as_pdf').props('dense')
-                ui.button('JSON', on_click=download_json, icon='data_object').props('dense')
+            ui.label('Export').classes('text-subtitle1 font-bold mt-4')
+            with ui.row().classes('w-full gap-1 no-wrap').style(
+                'border: 1px solid rgba(0,0,0,0.24); border-radius: 4px; '
+                'padding: 6px 8px;'
+            ):
+                ui.button('PNG', on_click=download_png, icon='image').props(
+                    'flat dense').classes('flex-1')
+                ui.button('SVG', on_click=download_svg, icon='code').props(
+                    'flat dense').classes('flex-1')
+                ui.button('JSON', on_click=download_json,
+                          icon='data_object').props('flat dense').classes('flex-1')
+
+            # Zoom
+            def set_zoom(v):
+                v = max(100, min(800, int(v)))
+                if v == state['zoom']:
+                    return
+                state['zoom'] = v
+                zoom_slider.value = v
+                update_preview()
+
+            ui.label('Zoom').classes('text-subtitle1 font-bold mt-4')
+            with ui.row().classes('w-full items-center gap-1 no-wrap').style(
+                'border: 1px solid rgba(0,0,0,0.24); border-radius: 4px; '
+                'padding: 4px 8px;'
+            ):
+                ui.button(icon='remove',
+                          on_click=lambda: set_zoom(state['zoom'] - 50)
+                          ).props('flat dense round size=sm')
+                zoom_slider = ui.slider(
+                    min=100, max=800, step=50, value=state['zoom'],
+                    on_change=lambda e: set_zoom(e.value),
+                ).props('label').classes('flex-1')
+                ui.button(icon='add',
+                          on_click=lambda: set_zoom(state['zoom'] + 50)
+                          ).props('flat dense round size=sm')
+                ui.button(icon='refresh',
+                          on_click=lambda: set_zoom(300)
+                          ).props('flat dense round size=sm')
 
         with ui.column().classes('p-4 gap-2 items-start').style(
             'min-width: 300px; flex: 1 1 0%;'
         ):
-            with ui.row().classes('gap-2 items-center'):
-                ui.label('Zoom:').classes('text-caption')
-                ui.button(icon='remove', on_click=lambda: (
-                    state.update({'zoom': max(100, state['zoom'] - 50)}),
-                    update_preview(),
-                )).props('round outline').style('min-width: 40px; min-height: 40px;')
-                ui.button(icon='add', on_click=lambda: (
-                    state.update({'zoom': min(800, state['zoom'] + 50)}),
-                    update_preview(),
-                )).props('round outline').style('min-width: 40px; min-height: 40px;')
-                ui.button('Reset', on_click=lambda: (
-                    state.update({'zoom': 300}),
-                    update_preview(),
-                )).props('outline dense')
-
             with ui.row().classes('gap-4 items-start'):
-                with ui.column().classes('items-center'):
-                    ui.label('Working Pattern').classes('text-subtitle1 font-bold')
-                    pattern_container = ui.element('div').style(f'width: {state["zoom"]}px;')
-                    with pattern_container:
-                        pattern_img = ui.image().classes('w-full')
-                with ui.column().classes('items-center'):
-                    ui.label('Fabric Preview').classes('text-subtitle1 font-bold')
-                    fabric_container = ui.element('div').style(f'width: {state["zoom"]}px;')
-                    with fabric_container:
-                        fabric_img = ui.image().classes('w-full')
-
-            ui.label('Bead Count').classes('text-subtitle1 font-bold')
-            bead_count_label = ui.markdown('').classes('w-full')
+                pattern_container = ui.element('div').style(f'width: {state["zoom"]}px;')
+                with pattern_container:
+                    pattern_img = ui.image().classes('w-full')
+                fabric_container = ui.element('div').style(f'width: {state["zoom"]}px;')
+                with fabric_container:
+                    fabric_img = ui.image().classes('w-full')
 
     # Initial render
     update_preview()

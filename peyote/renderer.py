@@ -24,28 +24,10 @@ def _bead_el(x: float, y: float, val: int,
     return el
 
 
-def _legend_els(palette: ColorPalette, start_x: float) -> str:
-    """Generate SVG legend elements."""
-    els = []
-    x = start_x
-    for i in range(palette.num_colors):
-        lbl = palette.label(i)
-        name = palette.names.get(i, f'Color {i}')
-        fill = palette.colors[i]
-        stroke = palette.strokes[i]
-        els.append(
-            f'<rect x="{x}" y="24" width="12" height="12" rx="3" '
-            f'fill="{fill}" stroke="{stroke}" stroke-width="1"/>'
-            f'<text x="{x+16}" y="35" font-size="10" fill="#555" '
-            f'font-family="Arial,sans-serif">{lbl}={name}</text>')
-        x += 90
-    return ''.join(els)
-
-
 def make_fabric_svg(fabric: list[list[int]], title: str,
                     config: BeadConfig, palette: ColorPalette) -> tuple[str, int, int]:
     """Render finished fabric view (interleaved brick appearance)."""
-    PL = 30; PT = 46; PB = 20; PR = 30
+    PL = 30; PT = 8; PB = 20; PR = 30
     nrows = len(fabric)
     bw, bh = config.bead_width, config.bead_height
     slot = config.slot
@@ -55,10 +37,6 @@ def make_fabric_svg(fabric: list[list[int]], title: str,
     SW = PL + config.columns * slot + slot + PR
 
     el = []
-    el.append(f'<text x="{SW//2}" y="16" text-anchor="middle" font-size="13" '
-              f'font-weight="600" fill="#333" font-family="Arial,sans-serif">'
-              f'{title} — finished fabric</text>')
-    el.append(_legend_els(palette, PL))
 
     for ri in range(nrows):
         N = ri + 1
@@ -87,7 +65,7 @@ def make_pattern_svg(fabric: list[list[int]], title: str,
     # Scale label area for larger patterns
     LABEL_W = 52; ARROW_W = 28
     PL = LABEL_W + ARROW_W + 8
-    PT = 46; PB = 40
+    PT = 8; PB = 40
     SW = PL + config.columns * slot + 40
 
     # Show bead labels only if beads are big enough
@@ -105,10 +83,6 @@ def make_pattern_svg(fabric: list[list[int]], title: str,
     SH = int(PT + pattern_y(nrows) + bh + PB)
 
     el = []
-    el.append(f'<text x="{SW//2}" y="16" text-anchor="middle" font-size="13" '
-              f'font-weight="600" fill="#333" font-family="Arial,sans-serif">'
-              f'{title} — working pattern</text>')
-    el.append(_legend_els(palette, PL))
 
     for ri in range(nrows):
         N = ri + 1
