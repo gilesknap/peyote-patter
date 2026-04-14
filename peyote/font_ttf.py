@@ -3,30 +3,68 @@
 import os
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
-# Search paths for proportional fonts first, then monospace fallbacks.
+# Curated font catalog — friendly name → candidate TTF paths.
+# Each entry lists fallbacks in order; the first existing file is used.
 # Regular weight preferred — bold produces strokes that are too thick at
 # small bead counts; the stroke-width normalisation pass ensures visibility.
-_FONT_SEARCH = [
-    '/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf',
-    '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
-    '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
-    '/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf',
-    '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
-    '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
-    '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf',
-    '/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf',
-]
+FONT_CATALOG: dict[str, list[str]] = {
+    'Serif': [
+        '/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf',
+        '/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf',
+    ],
+    'Serif Bold': [
+        '/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf',
+        '/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf',
+    ],
+    'Sans': [
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+        '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+    ],
+    'Sans Bold': [
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+        '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
+    ],
+    'Mono': [
+        '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf',
+        '/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf',
+    ],
+    'Ubuntu': [
+        '/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf',
+    ],
+}
+
+DEFAULT_FONT_NAME = 'Serif'
 
 
-def find_default_font() -> str:
-    """Find a suitable font on the system."""
-    for path in _FONT_SEARCH:
-        if os.path.exists(path):
-            return path
+def available_fonts() -> list[str]:
+    """Return catalog entries whose first existing candidate resolves."""
+    return [name for name, paths in FONT_CATALOG.items()
+            if any(os.path.exists(p) for p in paths)]
+
+
+def resolve_font(name: str | None) -> str:
+    """Look up a font by friendly catalog name, returning the first existing path.
+
+    Falls back to any available catalog font if *name* is None or missing.
+    """
+    if name and name in FONT_CATALOG:
+        for path in FONT_CATALOG[name]:
+            if os.path.exists(path):
+                return path
+    # Fallback: first available in catalog order
+    for paths in FONT_CATALOG.values():
+        for path in paths:
+            if os.path.exists(path):
+                return path
     raise FileNotFoundError(
         "No suitable TTF font found. Install dejavu or liberation fonts, "
         "or specify a font path with --font-path."
     )
+
+
+def find_default_font() -> str:
+    """Find a suitable font on the system (first available in the catalog)."""
+    return resolve_font(DEFAULT_FONT_NAME)
 
 
 def _ensure_min_stroke_width(grid: list[list[int]], min_width: int = 2) -> list[list[int]]:

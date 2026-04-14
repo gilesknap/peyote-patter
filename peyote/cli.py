@@ -7,6 +7,7 @@ import sys
 from .sizing import BeadConfig, PRESETS
 from .colors import ColorPalette, PALETTE_DEFS, get_palette
 from .font import text_to_fabric
+from .font_ttf import available_fonts, resolve_font, DEFAULT_FONT_NAME
 from .patterns import PATTERN_CATALOG
 from .compose import (
     compose_text_with_border,
@@ -36,8 +37,12 @@ def main():
     # Font
     parser.add_argument('--font', choices=['auto', 'ttf', 'bitmap'], default='auto',
                         help='Font engine (default: auto)')
+    parser.add_argument('--font-name', choices=available_fonts(),
+                        default=DEFAULT_FONT_NAME,
+                        help=f'Curated font (default: {DEFAULT_FONT_NAME}). '
+                             f'Overridden by --font-path.')
     parser.add_argument('--font-path', default=None,
-                        help='Path to TTF font file')
+                        help='Path to TTF font file (overrides --font-name)')
     parser.add_argument('--orientation', choices=['sideways', 'straight'], default='sideways',
                         help='Text direction: sideways (rings) or straight (bracelets)')
 
@@ -100,6 +105,9 @@ def main():
 
     rotate = args.orientation == 'sideways'
 
+    # Resolve font: --font-path wins, else look up --font-name in the catalog
+    font_path = args.font_path or resolve_font(args.font_name)
+
     # Build fabric
     if args.fabric:
         # Load from JSON
@@ -120,14 +128,14 @@ def main():
                 border_pattern=args.border,
                 border_rows=args.border_rows,
                 font_mode=args.font,
-                font_path=args.font_path,
+                font_path=font_path,
                 rotate=rotate,
             )
         else:
             fabric = text_to_fabric(
                 args.text, config,
                 font_mode=args.font,
-                font_path=args.font_path,
+                font_path=font_path,
                 rotate=rotate,
             )
         title = args.title or args.text

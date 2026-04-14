@@ -18,11 +18,13 @@ from peyote.compose import (
 from peyote.export import render_combined_png
 from peyote.renderer import make_fabric_svg, make_pattern_svg
 from peyote.grid import count_beads
+from peyote.font_ttf import available_fonts, resolve_font, DEFAULT_FONT_NAME
 
 
 def build_fabric(text, preset, columns, rows, layout, pattern_name,
                  font_mode, rotate, margin,
-                 bg_color, fg_color, border_color):
+                 bg_color, fg_color, border_color,
+                 font_path=None):
     """Build fabric grid and palette from current settings."""
     # Config
     if preset != 'custom':
@@ -39,25 +41,27 @@ def build_fabric(text, preset, columns, rows, layout, pattern_name,
 
     # Fabric
     if layout == 'Text Only':
-        fabric = text_to_fabric(text or 'HELLO', config, font_mode=font_mode, rotate=rotate, margin=margin)
+        fabric = text_to_fabric(text or 'HELLO', config, font_mode=font_mode,
+                                font_path=font_path, rotate=rotate, margin=margin)
         title = text or 'Pattern'
     elif layout == 'Text + Border':
         fabric = compose_text_with_border(
             text or 'HELLO', config,
             border_pattern=pattern_name,
-            font_mode=font_mode, rotate=rotate, margin=margin)
+            font_mode=font_mode, font_path=font_path, rotate=rotate, margin=margin)
         title = text or 'Pattern'
     elif layout == 'Text + Background':
         fabric = compose_text_with_background(
             text or 'HELLO', config,
             background_pattern=pattern_name,
-            font_mode=font_mode, rotate=rotate, margin=margin)
+            font_mode=font_mode, font_path=font_path, rotate=rotate, margin=margin)
         title = text or 'Pattern'
     elif layout == 'Pattern Only':
         fabric = compose_pattern_only(pattern_name, config)
         title = f'{pattern_name} pattern'
     else:
-        fabric = text_to_fabric(text or 'HELLO', config, font_mode=font_mode, rotate=rotate, margin=margin)
+        fabric = text_to_fabric(text or 'HELLO', config, font_mode=font_mode,
+                                font_path=font_path, rotate=rotate, margin=margin)
         title = text or 'Pattern'
 
     return fabric, config, palette, title
@@ -91,6 +95,7 @@ def create_ui():
         'pattern': 'chevron',
         'margin': 0,
         'font_mode': 'auto',  # kept for build_fabric compat
+        'font_name': DEFAULT_FONT_NAME,
         'rotate': True,
         'palette_name': 'classic',
         'bg_color': '#E8A0A8',
@@ -105,7 +110,8 @@ def create_ui():
                 state['text'], state['preset'], state['columns'], state['rows'],
                 state['layout'], state['pattern'],
                 state['font_mode'], state['rotate'], state['margin'],
-                state['bg_color'], state['fg_color'], state['border_color'])
+                state['bg_color'], state['fg_color'], state['border_color'],
+                font_path=resolve_font(state['font_name']))
 
             # Fabric preview — send SVG directly to browser (browser renders natively,
             # avoiding the cairosvg→PNG roundtrip that dominates render time).
@@ -263,6 +269,15 @@ def create_ui():
                                        state.update({'text': e.value}),
                                        update_preview(),
                                    )).props('outlined dense').classes('w-full')
+
+            ui.select(
+                available_fonts(),
+                value=state['font_name'], label='Font',
+                on_change=lambda e: (
+                    state.update({'font_name': e.value}),
+                    update_preview(),
+                )
+            ).props('outlined dense').classes('w-full')
 
             ui.switch('Sideways text (rings)',
                       value=state['rotate'],
