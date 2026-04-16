@@ -23,7 +23,7 @@ uv run peyote "GILES" --border chevron --border-rows 8
 uv run peyote "HELLO" --bead-count
 
 # Launch GUI
-uv run python -m peyote.gui
+uv run peyote-gui
 ```
 
 ## Size presets
@@ -67,4 +67,4 @@ stripe-h, stripe-v, chevron, diamond, zigzag, checker, border, dots, wave, gradi
 
 ## GUI
 
-Run `uv run python -m peyote.gui` to launch the visual designer at http://localhost:8080 with live preview, color pickers, pattern selection, and download buttons.
+Run `uv run peyote-gui` to launch the visual designer at http://localhost:8080 with live preview, color pickers, pattern selection, and download buttons.

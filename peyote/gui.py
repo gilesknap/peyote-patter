@@ -99,6 +99,7 @@ def render_svg(fabric, title, config, palette, view='fabric') -> str:
     return svg
 
 
+@ui.page('/')
 def create_ui():
     # State defaults
     state = {
@@ -458,5 +459,9 @@ def create_ui():
     update_preview()
 
 
-create_ui()
-ui.run(title='Peyote Pattern Designer', port=8080)
+def main(reload: bool = False):
+    ui.run(title='Peyote Pattern Designer', port=8080, reload=reload)
+
+
+if __name__ in {'__main__', '__mp_main__'}:
+    main(reload=True)
