@@ -262,6 +262,21 @@ def create_ui():
         fabric_container.style(f'width: {state["zoom"]}px;')
         fabric_img.content = ''
 
+    def render_current():
+        """Re-render fabric/pattern images from state['_fabric'] without regenerating."""
+        if not state.get('_fabric'):
+            return
+        fabric_svg = render_svg(state['_fabric'], state['_title'],
+                                state['_config'], state['_palette'],
+                                view='fabric')
+        fabric_img.set_source(_svg_data_url(fabric_svg))
+        pat_svg = render_svg(state['_fabric'], state['_title'],
+                             state['_config'], state['_palette'],
+                             view='pattern')
+        pattern_img.set_source(_svg_data_url(pat_svg))
+        refresh_bead_count(state['_fabric'], state['_config'],
+                           state['_palette'])
+
     def done_editor():
         es = state['editor']
         if es is not None:
@@ -270,17 +285,14 @@ def create_ui():
             state['_title'] = es.title
             state['custom'] = True
         exit_to_procedural()
-        if state.get('_fabric') is not None:
-            pat_svg = render_svg(state['_fabric'], state['_title'],
-                                 state['_config'], state['_palette'],
-                                 view='pattern')
-            pattern_img.set_source(_svg_data_url(pat_svg))
-            refresh_bead_count(state['_fabric'], state['_config'],
-                               state['_palette'])
+        render_current()
 
     def discard_editor():
+        # Throw away the editor session. state['_fabric'] still holds the
+        # pre-edit pattern (procedural OR a previously kept custom edit), so
+        # just re-render — don't regenerate from procedural settings.
         exit_to_procedural()
-        update_preview()
+        render_current()
 
     def has_editor_changes() -> bool:
         es = state['editor']
@@ -851,7 +863,14 @@ def create_ui():
                 es.redo_stack.clear()
                 es.selection = None
                 es.drag = None
+                # Loaded JSON becomes the new baseline — also commit to the
+                # outer state so a no-changes exit preserves it instead of
+                # reverting render_current() to the pre-load fabric.
+                state['_fabric'] = fabric
+                state['_palette'] = palette
+                state['_title'] = title
                 state['_config'] = config
+                state['custom'] = True
                 state['save_filename'] = None
                 build_editor_panel()
                 refresh_fabric_from_editor()
