@@ -432,7 +432,8 @@ def create_ui():
         hit = ed.hit_test(e.image_x, e.image_y, es.fabric, es.config)
         etype = e.type
 
-        # Floating-buffer mode (paste-positioning or drag-move) takes priority.
+        # Drag-move floating mode: mousemove tracks the cursor (anchor cell
+        # stays under it), mouseup commits.
         if es.floating is not None:
             if etype == 'mousemove':
                 if hit is None:
@@ -442,20 +443,11 @@ def create_ui():
                 if new_origin != es.floating_origin:
                     es.floating_origin = new_origin
                     refresh_fabric_from_editor()
-            elif etype == 'mousedown':
-                # Paste mode (no source lifted): click commits at cursor.
-                if not es.floating_lifted:
-                    if hit:
-                        ed.set_floating_origin_from_hit(es, hit)
-                    ed.commit_floating(es)
-                    refresh_fabric_from_editor()
             elif etype == 'mouseup':
-                # Drag-move mode: mouseup commits at cursor.
-                if es.floating_lifted:
-                    if hit:
-                        ed.set_floating_origin_from_hit(es, hit)
-                    ed.commit_floating(es)
-                    refresh_fabric_from_editor()
+                if hit:
+                    ed.set_floating_origin_from_hit(es, hit)
+                ed.commit_floating(es)
+                refresh_fabric_from_editor()
             return
 
         if etype == 'mousedown':
@@ -557,29 +549,55 @@ def create_ui():
         ui.label('Peyote Pattern Designer').classes('text-h5 text-white')
 
     def on_key(e):
-        # Only act on keydown while floating in the editor.
         if not e.action.keydown:
             return
         if state['mode'] != 'editor':
             return
         es = state['editor']
-        if es is None or es.floating is None:
+        if es is None:
             return
-        if e.key.escape:
-            ed.cancel_floating(es)
-        elif e.key.enter:
-            ed.commit_floating(es)
-        elif e.key.arrow_left:
-            ed.nudge_floating(es, 0, -2)
+
+        # Ctrl+X / C / V — clipboard shortcuts.
+        if e.modifiers.ctrl and not e.modifiers.alt and not e.modifiers.meta:
+            name = e.key.name.lower() if isinstance(e.key.name, str) else ''
+            if name == 'x':
+                ed.cut(es)
+                refresh_fabric_from_editor()
+                return
+            if name == 'c':
+                ed.copy(es)
+                return
+            if name == 'v':
+                if ed.do_paste(es):
+                    refresh_fabric_from_editor()
+                return
+
+        # Arrows: nudge the floating buffer if active, else the selection.
+        if e.key.arrow_left:
+            dri, dfc = 0, -2
         elif e.key.arrow_right:
-            ed.nudge_floating(es, 0, 2)
+            dri, dfc = 0, 2
         elif e.key.arrow_up:
-            ed.nudge_floating(es, -1, 0)
+            dri, dfc = -1, 0
         elif e.key.arrow_down:
-            ed.nudge_floating(es, 1, 0)
+            dri, dfc = 1, 0
+        elif e.key.escape and es.floating is not None:
+            ed.cancel_floating(es)
+            refresh_fabric_from_editor()
+            return
+        elif e.key.enter and es.floating is not None:
+            ed.commit_floating(es)
+            refresh_fabric_from_editor()
+            return
         else:
             return
-        refresh_fabric_from_editor()
+
+        if es.floating is not None:
+            ed.nudge_floating(es, dri, dfc)
+            refresh_fabric_from_editor()
+        elif es.selection is not None:
+            if ed.move_selection(es, dri, dfc):
+                fabric_img.content = ed.make_overlay_svg(es, es.config)
 
     ui.keyboard(on_key=on_key)
 
@@ -886,13 +904,9 @@ def create_ui():
                 es = state['editor']
                 if es is None:
                     return
-                if not ed.start_paste(es):
+                if not ed.do_paste(es):
                     return
                 refresh_fabric_from_editor()
-                ui.notify(
-                    'Move with mouse or arrows; click or Enter to drop, Esc to cancel.',
-                    type='info', position='bottom', timeout=3000,
-                )
 
             def do_clear():
                 es = state['editor']

@@ -303,26 +303,36 @@ def click_in_selection(sel: tuple[int, int, int, int],
     return r0 <= ri <= r1 and c0 <= fc <= c1
 
 
-def start_paste(state: EditorState) -> bool:
-    """Begin floating-paste mode.
+def do_paste(state: EditorState) -> bool:
+    """Paste clipboard at the active selection's top-left, or at clipboard_origin.
 
-    Snaps the buffer's origin to the active selection (if any), otherwise to
-    the remembered `clipboard_origin`. Returns False if the clipboard is empty.
+    Sets the selection to the bounds of the just-placed region so the user can
+    immediately drag it. Returns False if there's nothing to paste.
     """
     if state.clipboard is None:
         return False
-    state.floating = [row[:] for row in state.clipboard]
     if state.selection is not None:
         sel = state.selection
         r0 = min(sel[0], sel[2])
         c0 = min(sel[1], sel[3])
-        state.floating_origin = (r0, c0)
     else:
-        state.floating_origin = state.clipboard_origin or (0, 0)
-    state.floating_anchor = (0, 0)
-    state.floating_lifted = False
-    state.floating_prev_selection = state.selection
-    state.selection = None
+        r0, c0 = state.clipboard_origin or (0, 0)
+    push_history(state)
+    paste_at(state.fabric, state.config, state.clipboard, r0, c0)
+    state.clipboard_origin = (r0, c0)
+    nrows = len(state.clipboard)
+    ncols = max((len(r) for r in state.clipboard), default=0)
+    if nrows and ncols:
+        state.selection = (r0, c0, r0 + nrows - 1, c0 + ncols - 1)
+    return True
+
+
+def move_selection(state: EditorState, dri: int, dfc: int) -> bool:
+    """Translate the selection rectangle (marquee only — cells stay put)."""
+    if state.selection is None:
+        return False
+    r0, c0, r1, c1 = state.selection
+    state.selection = (r0 + dri, c0 + dfc, r1 + dri, c1 + dfc)
     return True
 
 
