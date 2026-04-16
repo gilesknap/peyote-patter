@@ -49,6 +49,8 @@ class EditorState:
     floating_origin: tuple[int, int] | None = None
     floating_anchor: tuple[int, int] = (0, 0)
     floating_lifted: bool = False
+    # Selection that was active before entering float mode; restored on cancel.
+    floating_prev_selection: tuple[int, int, int, int] | None = None
 
 
 # ─── Coordinate helpers ────────────────────────────────────────────────
@@ -302,16 +304,24 @@ def click_in_selection(sel: tuple[int, int, int, int],
 
 
 def start_paste(state: EditorState) -> bool:
-    """Begin floating-paste mode at the remembered clipboard origin.
+    """Begin floating-paste mode.
 
-    Returns False if the clipboard is empty.
+    Snaps the buffer's origin to the active selection (if any), otherwise to
+    the remembered `clipboard_origin`. Returns False if the clipboard is empty.
     """
     if state.clipboard is None:
         return False
     state.floating = [row[:] for row in state.clipboard]
-    state.floating_origin = state.clipboard_origin or (0, 0)
+    if state.selection is not None:
+        sel = state.selection
+        r0 = min(sel[0], sel[2])
+        c0 = min(sel[1], sel[3])
+        state.floating_origin = (r0, c0)
+    else:
+        state.floating_origin = state.clipboard_origin or (0, 0)
     state.floating_anchor = (0, 0)
     state.floating_lifted = False
+    state.floating_prev_selection = state.selection
     state.selection = None
     return True
 
@@ -338,6 +348,7 @@ def lift_selection_for_drag(state: EditorState,
     state.floating_origin = (r0, c0)
     state.floating_anchor = (ri - r0, fc - c0)
     state.floating_lifted = True
+    state.floating_prev_selection = sel
     state.selection = None
     state.clipboard = [row[:] for row in buf]
     state.clipboard_origin = (r0, c0)
@@ -355,21 +366,34 @@ def lift_selection_for_drag(state: EditorState,
 
 
 def commit_floating(state: EditorState) -> None:
-    """Write the floating buffer to fabric at floating_origin and exit float mode."""
+    """Write the floating buffer to fabric at floating_origin and exit float mode.
+
+    Leaves the just-placed region as the active selection so the user can
+    immediately drag it again or trigger another paste over the same spot.
+    """
     if state.floating is None or state.floating_origin is None:
         return
     if not state.floating_lifted:
         push_history(state)
     paste_at(state.fabric, state.config, state.floating, *state.floating_origin)
     state.clipboard_origin = state.floating_origin
+    nrows_buf = len(state.floating)
+    ncols_buf = max((len(r) for r in state.floating), default=0)
+    if nrows_buf and ncols_buf:
+        r0, c0 = state.floating_origin
+        state.selection = (r0, c0, r0 + nrows_buf - 1, c0 + ncols_buf - 1)
     state.floating = None
     state.floating_origin = None
     state.floating_anchor = (0, 0)
     state.floating_lifted = False
+    state.floating_prev_selection = None
 
 
 def cancel_floating(state: EditorState) -> None:
-    """Drop the floating buffer; if lifted from a drag, restore the source."""
+    """Drop the floating buffer; if lifted from a drag, restore the source.
+
+    Restores the selection that was active before float mode began.
+    """
     if state.floating is None:
         return
     if state.floating_lifted:
@@ -378,6 +402,8 @@ def cancel_floating(state: EditorState) -> None:
         undo(state)
         if state.redo_stack:
             state.redo_stack.pop()
+    state.selection = state.floating_prev_selection
+    state.floating_prev_selection = None
     state.floating = None
     state.floating_origin = None
     state.floating_anchor = (0, 0)
