@@ -241,6 +241,7 @@ def create_ui():
         state['mode'] = 'editor'
         state['editor_zoom'] = max(200, min(2000, state['zoom'] * 2))
         fabric_container.style(f'width: {state["editor_zoom"]}px;')
+        edit_button.set_visibility(False)
         procedural_panel.set_visibility(False)
         editor_panel.set_visibility(True)
         pattern_container.set_visibility(False)
@@ -250,6 +251,7 @@ def create_ui():
     def exit_to_procedural():
         state['mode'] = 'procedural'
         state['editor'] = None
+        edit_button.set_visibility(True)
         procedural_panel.set_visibility(True)
         editor_panel.set_visibility(False)
         pattern_container.set_visibility(True)
@@ -381,8 +383,8 @@ def create_ui():
             'min-width: 280px; flex: 0 0 25%; max-width: 100%;'
         ):
             # Edit mode toggle — hides procedural panel and reveals the
-            # editor toolbar. Disabled until we have a fabric to edit.
-            ui.button('Edit', icon='edit', on_click=enter_editor).props(
+            # editor toolbar. Hidden while the editor is open.
+            edit_button = ui.button('Edit', icon='edit', on_click=enter_editor).props(
                 'outlined').classes('w-full')
 
             # ─── Procedural panel ─────────────────────────────────────
