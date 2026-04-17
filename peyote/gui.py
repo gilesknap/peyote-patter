@@ -123,27 +123,27 @@ def _svg_data_url(svg: str) -> str:
 @ui.page('/')
 def create_ui():
     # State defaults
-    _default_preset = 'wide-bracelet'
+    _default_preset = 'ring'
     _default_preset_config = PRESETS[_default_preset]
     state = {
         'text': 'TASH',
         'preset': _default_preset,
         'columns': _default_preset_config.columns,
         'rows': _default_preset_config.rows,
-        'layout': 'Text + Border Wrap',
-        'pattern': 'scales',
-        'margin': 16,
+        'layout': 'Pattern Only',
+        'pattern': 'kinetic',
+        'margin': 0,
         'gap': 2,
         'repeat': 12,  # inert when pattern has no period
         'font_mode': 'auto',  # kept for build_fabric compat
         'font_name': DEFAULT_FONT_NAME,
         'rotate': True,
-        'palette_name': 'gold',
-        # Gold palette: Ivory / Gold / Amber + a darkened Amber for Accent 2
-        'bg_color': '#FFFDE7',
-        'text_color': '#FFD600',
-        'accent1_color': '#FF6F00',
-        'accent2_color': '#994200',
+        'palette_name': 'classic',
+        # Classic palette: Pink / Red + a darkened Red for Accent 2
+        'bg_color': '#E8A0A8',
+        'text_color': '#C82020',
+        'accent1_color': '#C82020',
+        'accent2_color': '#781313',
         'zoom': 300,  # px max-width per image
         'editor_zoom': 600,     # px width for the editor canvas (2× procedural default)
         'mode': 'procedural',   # or 'editor'
