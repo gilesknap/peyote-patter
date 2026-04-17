@@ -102,11 +102,10 @@ def save_pdf(fabric: list[list[int]], title: str,
     return output
 
 
-def save_json(fabric: list[list[int]], config: BeadConfig,
-              palette: ColorPalette, title: str = '',
-              output: str = 'peyote-pattern.json') -> str:
-    """Save full project state as JSON."""
-    data = {
+def _state_to_dict(fabric: list[list[int]], config: BeadConfig,
+                   palette: ColorPalette, title: str = '') -> dict:
+    """Serialize project state to a plain dict."""
+    return {
         'title': title,
         'config': {
             'columns': config.columns,
@@ -122,21 +121,35 @@ def save_json(fabric: list[list[int]], config: BeadConfig,
         },
         'fabric': fabric,
     }
-    with open(output, 'w') as f:
-        json.dump(data, f, indent=2)
-    return output
 
 
-def load_json(path: str) -> tuple[list[list[int]], BeadConfig, ColorPalette, str]:
-    """Load project state from JSON."""
-    with open(path) as f:
-        data = json.load(f)
+def _dict_to_state(data: dict) -> tuple[list[list[int]], BeadConfig, ColorPalette, str]:
     config = BeadConfig(**data['config'])
     palette = ColorPalette.from_pairs([
         (data['palette']['colors'][str(i)], data['palette']['names'][str(i)])
         for i in range(len(data['palette']['colors']))
     ])
     return data['fabric'], config, palette, data.get('title', '')
+
+
+def save_json(fabric: list[list[int]], config: BeadConfig,
+              palette: ColorPalette, title: str = '',
+              output: str = 'peyote-pattern.json') -> str:
+    """Save full project state as JSON."""
+    with open(output, 'w') as f:
+        json.dump(_state_to_dict(fabric, config, palette, title), f, indent=2)
+    return output
+
+
+def load_json_from_str(s: str) -> tuple[list[list[int]], BeadConfig, ColorPalette, str]:
+    """Load project state from a JSON string."""
+    return _dict_to_state(json.loads(s))
+
+
+def load_json(path: str) -> tuple[list[list[int]], BeadConfig, ColorPalette, str]:
+    """Load project state from JSON file."""
+    with open(path) as f:
+        return load_json_from_str(f.read())
 
 
 def format_bead_count(fabric: list[list[int]], config: BeadConfig,
