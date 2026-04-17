@@ -42,7 +42,7 @@ def make_fabric_svg(fabric: list[list[int]], title: str,
         N = ri + 1
         is_odd = (N % 2 == 1)
         fab_cols = config.cols_for_row(ri)
-        x_offset = 0 if is_odd else slot
+        x_offset = slot if is_odd else 0
         y = PT + (N - 1) * bh / 2
         for bi, fc in enumerate(fab_cols):
             val = fabric[ri][fc]

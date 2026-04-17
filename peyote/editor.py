@@ -98,7 +98,7 @@ def hit_test(cx: float, cy: float, fabric: list[list[int]],
         cols = config.cols_for_row(ri)
         if not cols:
             continue
-        x_offset = 0 if (ri + 1) % 2 == 1 else slot
+        x_offset = slot if (ri + 1) % 2 == 1 else 0
         bi = round((cx - PL - x_offset - bw / 2) / (2 * slot))
         bi = max(0, min(len(cols) - 1, bi))
         fc = cols[bi]
