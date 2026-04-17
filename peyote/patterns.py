@@ -361,6 +361,111 @@ def braid(columns: int, rows: int, period: int = 8, width: int = 2,
     return grid
 
 
+# "Kinetic" 10-wide × 72-row peyote design, transcribed from the
+# original chart. Values: 0=background (pink), 1=accent1 (red),
+# 2=accent2 (black). Rows 0-8 are the lead-in, rows 9-24 form a 16-row
+# cycle that repeats three times through row 64, then rows 65-71 are an
+# all-background tail.
+_KINETIC_BASE: list[list[int]] = [
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+    [0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+    [0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
+    [0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+    [0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+    [0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
+    [0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+    [0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
+    [0, 0, 1, 0, 0, 0, 1, 0, 1, 0],
+    [0, 0, 0, 1, 0, 0, 0, 2, 0, 0],
+    [0, 0, 0, 0, 1, 0, 1, 0, 1, 0],
+    [0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
+    [0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+    [0, 1, 0, 1, 0, 0, 0, 0, 0, 1],
+    [0, 0, 2, 0, 0, 0, 0, 0, 1, 0],
+    [0, 1, 0, 1, 0, 0, 0, 1, 0, 0],
+    [0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+    [0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+    [0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
+    [0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+    [0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
+    [0, 0, 1, 0, 0, 0, 1, 0, 1, 0],
+    [0, 0, 0, 1, 0, 0, 0, 2, 0, 0],
+    [0, 0, 0, 0, 1, 0, 1, 0, 1, 0],
+    [0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
+    [0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+    [0, 1, 0, 1, 0, 0, 0, 0, 0, 1],
+    [0, 0, 2, 0, 0, 0, 0, 0, 1, 0],
+    [0, 1, 0, 1, 0, 0, 0, 1, 0, 0],
+    [0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+    [0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+    [0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
+    [0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+    [0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
+    [0, 0, 1, 0, 0, 0, 1, 0, 1, 0],
+    [0, 0, 0, 1, 0, 0, 0, 2, 0, 0],
+    [0, 0, 0, 0, 1, 0, 1, 0, 1, 0],
+    [0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
+    [0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+    [0, 1, 0, 1, 0, 0, 0, 0, 0, 1],
+    [0, 0, 2, 0, 0, 0, 0, 0, 1, 0],
+    [0, 1, 0, 1, 0, 0, 0, 1, 0, 0],
+    [0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+    [0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+    [0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
+    [0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+    [0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
+    [0, 0, 1, 0, 0, 0, 1, 0, 1, 0],
+    [0, 0, 0, 1, 0, 0, 0, 2, 0, 0],
+    [0, 0, 0, 0, 1, 0, 1, 0, 1, 0],
+    [0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+]
+
+
+def kinetic(columns: int, rows: int,
+            color1: int = 1, color2: int = 2,
+            bg: int = 0) -> list[list[int]]:
+    """Kinetic peyote design — diagonal streaks over pink.
+
+    The original chart is 10 wide × 72 rows. For any other size the 16-row
+    middle cycle (base rows 9-24) tiles vertically — its even length keeps
+    the peyote parity correct — and the 10-wide motif wraps horizontally.
+    """
+    color_map = [bg, color1, color2]
+    base = _KINETIC_BASE
+    cycle_start, cycle_len = 9, 16
+    base_rows = len(base)
+
+    grid = []
+    for r in range(rows):
+        if r < base_rows:
+            src = base[r]
+        else:
+            src = base[cycle_start + (r - cycle_start) % cycle_len]
+        grid.append([color_map[src[c % 10]] for c in range(columns)])
+    return grid
+
+
 def honeycomb(columns: int, rows: int, size: int = 3,
               color1: int = 1, color2: int = 2, bg: int = 0) -> list[list[int]]:
     """Hexagonal cells — alternating cell fills with shared walls."""
@@ -408,6 +513,7 @@ PATTERN_CATALOG: dict[str, callable] = {
     'flames': flames,
     'braid': braid,
     'honeycomb': honeycomb,
+    'kinetic': kinetic,
 }
 
 
@@ -421,7 +527,7 @@ SINGLE_COLOR_PATTERNS: list[str] = [
 # Patterns that emit two ON colors (indices 1 and 2). These use both
 # Accent 1 and Accent 2 and are the ones that benefit from the full palette.
 TWO_COLOR_PATTERNS: list[str] = [
-    'argyle', 'scales', 'flames', 'braid', 'honeycomb',
+    'argyle', 'scales', 'flames', 'braid', 'honeycomb', 'kinetic',
 ]
 
 
