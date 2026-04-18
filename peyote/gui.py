@@ -25,7 +25,11 @@ from peyote.patterns import (
     pattern_repeat_default,
     pattern_repeat_kwargs,
 )
-from peyote.renderer import make_fabric_svg, make_pattern_svg
+from peyote.renderer import (
+    make_fabric_svg,
+    make_pattern_svg,
+    pattern_checkbox_bounds,
+)
 from peyote.sizing import PRESETS, BeadConfig
 
 
@@ -107,10 +111,12 @@ def render_to_bytes(fabric, title, config, palette, view='fabric'):
     return buf.getvalue()
 
 
-def render_svg(fabric, title, config, palette, view='fabric') -> str:
+def render_svg(fabric, title, config, palette, view='fabric',
+               progress_through: int = 0) -> str:
     """Render SVG string directly (for live browser preview — skips cairosvg)."""
     if view == 'pattern':
-        svg, _, _ = make_pattern_svg(fabric, title, config, palette)
+        svg, _, _ = make_pattern_svg(fabric, title, config, palette,
+                                     progress_through=progress_through)
     else:
         svg, _, _ = make_fabric_svg(fabric, title, config, palette)
     return svg
@@ -152,6 +158,7 @@ def create_ui():
         'save_folder': None,    # last folder chosen in the save dialog
         'custom': False,        # True once editor edits have been kept
         '_syncing': False,      # guards cascading set_value() -> on_change loops
+        'progress_row': 0,      # rows 1..progress_row are marked complete in pattern view
     }
 
     def update_preview():
@@ -170,13 +177,16 @@ def create_ui():
                 font_path=resolve_font(state['font_name']),
                 gap=state['gap'], repeat=state['repeat'])
 
-            # Regenerating from procedural settings wipes any kept custom edits.
+            # Regenerating from procedural settings wipes any kept custom edits
+            # and the user's tick-off progress on the pattern view.
             state['custom'] = False
+            state['progress_row'] = 0
 
             fabric_svg = render_svg(fabric, title, config, palette, view='fabric')
             fabric_img.set_source(_svg_data_url(fabric_svg))
 
-            pat_svg = render_svg(fabric, title, config, palette, view='pattern')
+            pat_svg = render_svg(fabric, title, config, palette, view='pattern',
+                                 progress_through=state['progress_row'])
             pattern_img.set_source(_svg_data_url(pat_svg))
 
             z = state['zoom']
@@ -272,10 +282,42 @@ def create_ui():
         fabric_img.set_source(_svg_data_url(fabric_svg))
         pat_svg = render_svg(state['_fabric'], state['_title'],
                              state['_config'], state['_palette'],
-                             view='pattern')
+                             view='pattern',
+                             progress_through=state['progress_row'])
         pattern_img.set_source(_svg_data_url(pat_svg))
         refresh_bead_count(state['_fabric'], state['_config'],
                            state['_palette'])
+
+    def rerender_pattern():
+        """Re-render pattern image only (honours current progress_row)."""
+        if not state.get('_fabric'):
+            return
+        pat_svg = render_svg(state['_fabric'], state['_title'],
+                             state['_config'], state['_palette'],
+                             view='pattern',
+                             progress_through=state['progress_row'])
+        pattern_img.set_source(_svg_data_url(pat_svg))
+
+    def on_pattern_click(e):
+        # Only act on the initial mouse-down of a click — ignore drag/move.
+        if e.type != 'mousedown':
+            return
+        if not state.get('_fabric'):
+            return
+        x, y = e.image_x, e.image_y
+        bounds = pattern_checkbox_bounds(state['_fabric'], state['_config'])
+        for N_click, cx, cy, sz in bounds:
+            if cx <= x <= cx + sz and cy <= y <= cy + sz:
+                current = state['progress_row']
+                # Toggle: ticking a checked box unwinds to one row below
+                # (or to 0 for the merged R1+2). Ticking an unchecked box
+                # sets progress to that row — all boxes above are ticked too.
+                if current >= N_click:
+                    state['progress_row'] = 0 if N_click <= 2 else N_click - 1
+                else:
+                    state['progress_row'] = N_click
+                rerender_pattern()
+                return
 
     def done_editor():
         es = state['editor']
@@ -1088,7 +1130,11 @@ def create_ui():
             with ui.row().classes('gap-4 items-start'):
                 pattern_container = ui.element('div').style(f'width: {state["zoom"]}px;')
                 with pattern_container:
-                    pattern_img = ui.image().classes('w-full')
+                    pattern_img = ui.interactive_image(
+                        content='', cross=False,
+                        events=['mousedown'],
+                        on_mouse=lambda e: on_pattern_click(e),
+                    ).classes('w-full')
                 fabric_container = ui.element('div').style(f'width: {state["zoom"]}px;')
                 with fabric_container:
                     fabric_img = ui.interactive_image(
