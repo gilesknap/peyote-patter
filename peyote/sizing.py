@@ -8,8 +8,10 @@ class BeadConfig:
     """Configuration for a peyote stitch piece.
 
     Even-count flat peyote: columns must be even.
-    Odd rows (N=1,3,5...) use even-indexed columns (0,2,4,...).
-    Even rows (N=2,4,6...) use odd-indexed columns (1,3,5,...).
+    Odd rows (N=1,3,5...) use odd-indexed columns (1,3,5,...).
+    Even rows (N=2,4,6...) use even-indexed columns (0,2,4,...).
+    This places a single bead at the start and stacks two at the
+    turnaround, matching the thread path of even-count peyote.
     """
     columns: int = 10
     rows: int = 72
@@ -32,11 +34,11 @@ class BeadConfig:
 
     def odd_cols(self) -> list[int]:
         """Columns active on odd fabric rows (N=1,3,5...)."""
-        return list(range(0, self.columns, 2))
+        return list(range(1, self.columns, 2))
 
     def even_cols(self) -> list[int]:
         """Columns active on even fabric rows (N=2,4,6...)."""
-        return list(range(1, self.columns, 2))
+        return list(range(0, self.columns, 2))
 
     def cols_for_row(self, row_index: int) -> list[int]:
         """Active columns for a given 0-indexed fabric row."""
