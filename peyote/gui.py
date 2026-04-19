@@ -1,11 +1,11 @@
 """NiceGUI-based peyote pattern designer."""
 
 import argparse
+import asyncio
 import base64
 import copy
 import io
 import json as json_mod
-from pathlib import Path
 
 from nicegui import app, ui
 
@@ -43,7 +43,7 @@ PERSISTED_KEYS = (
     'text', 'preset', 'columns', 'rows', 'layout', 'pattern',
     'margin', 'gap', 'repeat', 'font_mode', 'font_name', 'rotate',
     'palette_name', 'bg_color', 'text_color', 'accent1_color', 'accent2_color',
-    'zoom', 'editor_zoom', 'save_filename', 'save_folder',
+    'zoom', 'editor_zoom', 'current_filename',
     'progress_row', 'custom',
 )
 
@@ -141,8 +141,71 @@ def _svg_data_url(svg: str) -> str:
     return f'data:image/svg+xml;base64,{base64.b64encode(svg.encode()).decode()}'
 
 
+FILE_API_JS = '''
+<script>
+window.peyoteFileApi = {
+  handle: null,
+  available() { return typeof window.showSaveFilePicker === 'function'; },
+  hasHandle() { return this.handle !== null; },
+  async save(b64, suggestedName, forcePicker) {
+    const data = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    const fallback = () => {
+      const blob = new Blob([data], {type: 'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = suggestedName || 'peyote-pattern.json';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      return {ok: true, name: a.download, fallback: true};
+    };
+    if (!this.available()) return fallback();
+    try {
+      let handle = this.handle;
+      if (!handle || forcePicker) {
+        handle = await window.showSaveFilePicker({
+          suggestedName: suggestedName || 'peyote-pattern.json',
+          types: [{description: 'Peyote Pattern',
+                   accept: {'application/json': ['.json']}}],
+        });
+        this.handle = handle;
+      }
+      const writable = await handle.createWritable();
+      await writable.write(data);
+      await writable.close();
+      return {ok: true, name: handle.name, fallback: false};
+    } catch (err) {
+      if (err.name === 'AbortError') return {ok: false, cancelled: true};
+      return {ok: false, error: String(err)};
+    }
+  },
+  async open() {
+    if (!this.available()) return {ok: false, unsupported: true};
+    try {
+      const [handle] = await window.showOpenFilePicker({
+        types: [{description: 'Peyote Pattern',
+                 accept: {'application/json': ['.json']}}],
+      });
+      this.handle = handle;
+      const file = await handle.getFile();
+      const text = await file.text();
+      return {ok: true, name: file.name, text: text};
+    } catch (err) {
+      if (err.name === 'AbortError') return {ok: false, cancelled: true};
+      return {ok: false, error: String(err)};
+    }
+  },
+  forget() { this.handle = null; },
+};
+</script>
+'''
+
+
 @ui.page('/')
 def create_ui():
+    ui.add_head_html(FILE_API_JS)
     # State defaults
     _default_preset = 'ring'
     _default_preset_config = PRESETS[_default_preset]
@@ -169,8 +232,7 @@ def create_ui():
         'editor_zoom': 600,     # px width for the editor canvas (2× procedural default)
         'mode': 'procedural',   # or 'editor'
         'editor': None,         # ed.EditorState when in editor mode
-        'save_filename': None,  # full path; set after first save, reused on subsequent saves
-        'save_folder': None,    # last folder chosen in the save dialog
+        'current_filename': '', # last loaded/saved filename; '' means never named
         'custom': False,        # True once editor edits have been kept
         '_syncing': False,      # guards cascading set_value() -> on_change loops
         'progress_row': 0,      # rows 1..progress_row are marked complete in pattern view
@@ -311,7 +373,6 @@ def create_ui():
         )
         state['editor'] = es
         state['mode'] = 'editor'
-        state['save_filename'] = None
         state['editor_zoom'] = max(200, min(2000, state['zoom'] * 2))
         fabric_container.style(f'width: {state["editor_zoom"]}px;')
         edit_button.set_visibility(False)
@@ -405,19 +466,6 @@ def create_ui():
             return True
         return es.palette.colors != es.snapshot_palette.colors
 
-    def _default_save_folder() -> Path:
-        if state.get('save_folder'):
-            return Path(state['save_folder']).expanduser()
-        downloads = Path.home() / 'Downloads'
-        return downloads if downloads.is_dir() else Path.home()
-
-    def _resolve_save_path(folder: str, name: str) -> Path:
-        name = name.strip()
-        if not name.lower().endswith('.json'):
-            name += '.json'
-        base = Path(folder).expanduser() if folder.strip() else _default_save_folder()
-        return (base / name).expanduser().resolve()
-
     def _current_pattern_sources():
         """Return (fabric, config, palette, title, progress_row) for saving.
 
@@ -434,91 +482,126 @@ def create_ui():
         return (fabric, state['_config'], state['_palette'],
                 state.get('_title', ''), state.get('progress_row', 0))
 
-    def _write_pattern_json(path: Path) -> None:
+    def _suggested_filename() -> str:
+        name = state.get('current_filename')
+        if name:
+            return name
         src = _current_pattern_sources()
-        if src is None:
+        title = (src[3] if src else '') or ''
+        slug = ''.join(c if c.isalnum() or c in '-_' else '-' for c in title.strip())
+        slug = slug.strip('-')
+        return f'{slug or "peyote-pattern"}.json'
+
+    async def _save_via_browser(force_picker: bool, after_save) -> None:
+        if _current_pattern_sources() is None:
             return
-        fabric, config, palette, title, progress_row = src
+        fabric, config, palette, title, progress_row = _current_pattern_sources()
         payload = _state_to_dict(fabric, config, palette, title, progress_row)
+        b64 = base64.b64encode(json_mod.dumps(payload, indent=2).encode()).decode()
+        suggested = _suggested_filename()
+        code = (f'return await window.peyoteFileApi.save('
+                f'{json_mod.dumps(b64)}, {json_mod.dumps(suggested)}, '
+                f'{"true" if force_picker else "false"});')
         try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json_mod.dumps(payload, indent=2), encoding='utf-8')
-        except OSError as err:
+            result = await ui.run_javascript(code, timeout=300.0)
+        except Exception as err:
             ui.notify(f'Save failed: {err}', type='negative')
             return
-        ui.notify(f'Saved {path}', type='positive')
-
-    def _confirm_overwrite_then(path: Path, on_confirm) -> None:
-        if not path.exists():
-            on_confirm()
+        if not result or not result.get('ok'):
+            if result and result.get('cancelled'):
+                return
+            ui.notify(f'Save failed: {result.get("error", "unknown")}',
+                      type='negative')
             return
-        with ui.dialog() as dlg, ui.card():
-            ui.label(f'{path} already exists.').classes('text-subtitle1')
-            ui.label('Overwrite?').classes('text-body2')
-            with ui.row().classes('w-full justify-end gap-2'):
-                ui.button('Cancel', on_click=dlg.close).props('flat')
-
-                def yes():
-                    dlg.close()
-                    on_confirm()
-
-                ui.button('Overwrite', on_click=yes).props('color=negative')
-        dlg.open()
-
-    def prompt_save_filename(after_save) -> None:
-        """Ask for folder + filename, write JSON (with overwrite confirm), then call after_save()."""
-        src = _current_pattern_sources()
-        src_title = src[3] if src else ''
-        default_name = src_title if src_title else 'peyote-pattern'
-        # Pre-populate from the last save when re-prompting, else default folder.
-        if state.get('save_filename'):
-            prev = Path(state['save_filename'])
-            default_folder = str(prev.parent)
-            default_name = prev.stem
+        name = result.get('name') or suggested
+        state['current_filename'] = name
+        persist_state()
+        if result.get('fallback'):
+            ui.notify(f'Downloaded {name} — your browser does not support '
+                      'in-place save, so it may auto-rename if the file '
+                      'already exists.', type='info')
         else:
-            default_folder = str(_default_save_folder())
+            ui.notify(f'Saved {name}', type='positive')
+        after_save()
+
+    async def _has_open_handle() -> bool:
+        try:
+            res = await ui.run_javascript(
+                'return window.peyoteFileApi.hasHandle();', timeout=5.0)
+        except Exception:
+            return False
+        return bool(res)
+
+    def _confirm_overwrite(name: str):
+        """Show an overwrite dialog. Returns 'overwrite', 'save_as' or 'cancel'."""
+        future = asyncio.get_event_loop().create_future()
+
+        def resolve(value):
+            if not future.done():
+                future.set_result(value)
+            dlg.close()
+
         with ui.dialog() as dlg, ui.card():
-            ui.label('Save pattern as').classes('text-subtitle1')
-            folder_input = ui.input(label='Folder', value=default_folder).props(
-                'outlined dense').classes('w-full').style('min-width: 360px;')
-            name_input = ui.input(label='Filename', value=default_name).props(
-                'outlined dense').classes('w-full')
+            ui.label(f'Overwrite {name}?').classes('text-subtitle1')
+            ui.label('The existing file will be replaced.').classes(
+                'text-caption text-grey-7')
             with ui.row().classes('w-full justify-end gap-2'):
-                ui.button('Cancel', on_click=dlg.close).props('flat')
-
-                def confirm():
-                    name = (name_input.value or default_name).strip()
-                    if not name:
-                        return
-                    folder = folder_input.value or ''
-                    path = _resolve_save_path(folder, name)
-                    dlg.close()
-
-                    def do_save():
-                        state['save_filename'] = str(path)
-                        state['save_folder'] = str(path.parent)
-                        _write_pattern_json(path)
-                        persist_state()
-                        after_save()
-
-                    _confirm_overwrite_then(path, do_save)
-
-                ui.button('Save', on_click=confirm).props('color=primary')
+                ui.button('Cancel', on_click=lambda: resolve('cancel')
+                          ).props('flat')
+                ui.button('Save As', on_click=lambda: resolve('save_as')
+                          ).props('flat')
+                ui.button('Overwrite', on_click=lambda: resolve('overwrite')
+                          ).props('color=primary')
+        dlg.on('hide', lambda _: resolve('cancel'))
         dlg.open()
+        return future
 
-    def save_pattern_json(after_save=lambda: None) -> None:
-        """Write JSON using the remembered path, or prompt on first save."""
-        name = state.get('save_filename')
-        if not name:
-            prompt_save_filename(after_save)
+    async def save_pattern_json(after_save=lambda: None) -> None:
+        """Save through the open file handle, or prompt for a location on first save."""
+        if _current_pattern_sources() is None:
             return
-        path = Path(name)
+        # Only prompt when we're about to silently overwrite via a held handle.
+        # No handle = the native picker will open and handle confirmation itself.
+        if await _has_open_handle():
+            choice = await _confirm_overwrite(
+                state.get('current_filename') or _suggested_filename())
+            if choice == 'cancel':
+                return
+            if choice == 'save_as':
+                await _save_via_browser(force_picker=True, after_save=after_save)
+                return
+        await _save_via_browser(force_picker=False, after_save=after_save)
 
-        def do_save():
-            _write_pattern_json(path)
-            after_save()
+    async def save_pattern_json_as(after_save=lambda: None) -> None:
+        """Always show the native save dialog, defaulting to the current name."""
+        await _save_via_browser(force_picker=True, after_save=after_save)
 
-        _confirm_overwrite_then(path, do_save)
+    async def _open_via_browser():
+        """Try the File System Access API; return result dict or None.
+
+        Result shape:
+          {'name': str, 'text': str}                 — file picked
+          {'cancelled': True}                        — user dismissed picker
+          {'unsupported': True}                      — browser lacks API
+          None                                       — JS error
+        """
+        try:
+            result = await ui.run_javascript(
+                'return await window.peyoteFileApi.open();', timeout=300.0)
+        except Exception as err:
+            ui.notify(f'Load failed: {err}', type='negative')
+            return None
+        if result is None:
+            return None
+        if result.get('ok'):
+            return {'name': result['name'], 'text': result['text']}
+        if result.get('cancelled'):
+            return {'cancelled': True}
+        if result.get('unsupported'):
+            return {'unsupported': True}
+        ui.notify(f'Load failed: {result.get("error", "unknown")}',
+                  type='negative')
+        return None
 
     def request_close_editor():
         if not has_editor_changes():
@@ -533,13 +616,13 @@ def create_ui():
                     on_click=lambda: (dlg.close(), discard_editor()),
                 ).props('flat color=negative')
 
-                def save_and_close():
+                async def save_and_close():
                     dlg.close()
-                    save_pattern_json(done_editor)
+                    await save_pattern_json(done_editor)
 
-                def save_as_and_close():
+                async def save_as_and_close():
                     dlg.close()
-                    prompt_save_filename(done_editor)
+                    await save_pattern_json_as(done_editor)
 
                 ui.button('Save As', on_click=save_as_and_close).props('flat')
                 ui.button('Save', on_click=save_and_close).props('color=primary')
@@ -946,9 +1029,8 @@ def create_ui():
                               icon='data_object').props('flat dense').classes('flex-1')
 
                 # File (save/load pattern + progress)
-                async def on_procedural_upload(e):
+                def _apply_procedural_load(text: str, name: str) -> None:
                     try:
-                        text = await e.file.text()
                         fabric, config, palette, title, progress = (
                             ed.fabric_from_json(text))
                     except Exception as err:
@@ -960,24 +1042,41 @@ def create_ui():
                     state['_title'] = title
                     state['custom'] = True
                     state['progress_row'] = progress
-                    state['save_filename'] = None
+                    state['current_filename'] = name or ''
                     render_current()
                     persist_state()
                     ui.notify('Loaded pattern', type='positive')
+
+                async def on_procedural_upload(e):
+                    text = await e.file.text()
+                    _apply_procedural_load(text, e.file.name or '')
 
                 ui.label('File').classes('text-subtitle1 font-bold mt-4')
                 proc_upload = ui.upload(on_upload=on_procedural_upload,
                                         auto_upload=True, max_files=1
                                         ).props('accept=.json').style('display:none')
+
+                async def do_procedural_load():
+                    res = await _open_via_browser()
+                    if res is None or 'cancelled' in res:
+                        return
+                    if 'unsupported' in res:
+                        proc_upload.run_method('pickFiles')
+                        return
+                    _apply_procedural_load(res['text'], res['name'])
+
                 with ui.row().classes('w-full gap-1 no-wrap').style(
                     'border: 1px solid rgba(0,0,0,0.24); border-radius: 4px; '
                     'padding: 6px 8px;'
                 ):
                     ui.button('Save', icon='save',
-                              on_click=lambda: save_pattern_json()
+                              on_click=save_pattern_json
+                              ).props('flat dense').classes('flex-1')
+                    ui.button('Save As', icon='save_as',
+                              on_click=save_pattern_json_as
                               ).props('flat dense').classes('flex-1')
                     ui.button('Load', icon='folder_open',
-                              on_click=lambda: proc_upload.run_method('pickFiles')
+                              on_click=do_procedural_load
                               ).props('flat dense').classes('flex-1')
 
                 # Zoom
@@ -1077,15 +1176,20 @@ def create_ui():
                 ed.clear_fabric(es.fabric, 0)
                 refresh_fabric_from_editor()
 
-            def do_save_json():
+            async def do_save_json():
                 if state['editor'] is None:
                     return
-                save_pattern_json()
+                await save_pattern_json()
 
-            async def on_upload(e):
+            async def do_save_json_as():
+                if state['editor'] is None:
+                    return
+                await save_pattern_json_as()
+
+            def _apply_editor_load(text: str, name: str) -> None:
                 try:
-                    text = await e.file.text()
-                    fabric, config, palette, title, progress = ed.fabric_from_json(text)
+                    fabric, config, palette, title, progress = (
+                        ed.fabric_from_json(text))
                 except Exception as err:
                     ui.notify(f'Load failed: {err}', type='negative')
                     return
@@ -1111,11 +1215,15 @@ def create_ui():
                 state['_config'] = config
                 state['custom'] = True
                 state['progress_row'] = progress
-                state['save_filename'] = None
+                state['current_filename'] = name or ''
                 build_editor_panel()
                 refresh_fabric_from_editor()
                 persist_state()
                 ui.notify('Loaded pattern', type='positive')
+
+            async def on_upload(e):
+                text = await e.file.text()
+                _apply_editor_load(text, e.file.name or '')
 
             editor_zoom_slider = None
 
@@ -1219,12 +1327,27 @@ def create_ui():
                     editor_upload = ui.upload(on_upload=on_upload,
                                               auto_upload=True, max_files=1
                                               ).props('accept=.json').style('display:none')
+
+                    async def do_editor_load():
+                        if state['editor'] is None:
+                            return
+                        res = await _open_via_browser()
+                        if res is None or 'cancelled' in res:
+                            return
+                        if 'unsupported' in res:
+                            editor_upload.run_method('pickFiles')
+                            return
+                        _apply_editor_load(res['text'], res['name'])
+
                     with ui.row().classes('w-full gap-1 no-wrap'):
                         ui.button('Save', icon='save',
                                   on_click=do_save_json
                                   ).props('flat dense').classes('flex-1')
+                        ui.button('Save As', icon='save_as',
+                                  on_click=do_save_json_as
+                                  ).props('flat dense').classes('flex-1')
                         ui.button('Load', icon='folder_open',
-                                  on_click=lambda: editor_upload.run_method('pickFiles')
+                                  on_click=do_editor_load
                                   ).props('flat dense').classes('flex-1')
 
                     # Zoom
